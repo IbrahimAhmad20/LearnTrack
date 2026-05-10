@@ -22,3 +22,28 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# dependencies
+node_modules/
+
+# environment files
+.env
+
+# build folders
+dist/
+build/
+
+# logs
+*.log
+
+# zip files
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# vite
+.vite/
+
+# coverage
+coverage/
