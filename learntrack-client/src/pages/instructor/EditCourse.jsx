@@ -11,6 +11,52 @@ function emptyMcqOptions(n = 4) {
   }));
 }
 
+/** Parse pasted/uploaded JSON into a questions array. */
+function normalizeImportQuestions(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray(parsed.questions)) return parsed.questions;
+  throw new Error(
+    'Expected a JSON array of questions, or { "questions": [ ... ] }',
+  );
+}
+
+function validateImportQuestion(raw, index) {
+  const label = `Question ${index + 1}`;
+  if (!raw || typeof raw !== "object") {
+    throw new Error(`${label}: invalid object`);
+  }
+  const type = raw.question_type;
+  if (type !== "mcq" && type !== "true_false") {
+    throw new Error(`${label}: question_type must be "mcq" or "true_false"`);
+  }
+  const text = String(raw.question_text ?? "").trim();
+  if (!text) throw new Error(`${label}: question_text is required`);
+  const opts = raw.options;
+  if (!Array.isArray(opts) || opts.length < 2) {
+    throw new Error(`${label}: options must be an array with at least 2 items`);
+  }
+  if (type === "true_false" && opts.length !== 2) {
+    throw new Error(`${label}: true_false must have exactly 2 options`);
+  }
+  if (!opts.some((o) => o.is_correct === true)) {
+    throw new Error(`${label}: at least one option must have is_correct: true`);
+  }
+  for (const o of opts) {
+    if (!String(o.option_text ?? "").trim()) {
+      throw new Error(`${label}: every option needs option_text`);
+    }
+  }
+  return {
+    question_type: type,
+    question_text: text,
+    points: Number(raw.points) > 0 ? Number(raw.points) : 1,
+    options: opts.map((o) => ({
+      option_text: String(o.option_text).trim(),
+      is_correct: Boolean(o.is_correct),
+    })),
+  };
+}
+
 export default function EditCourse() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -48,7 +94,10 @@ export default function EditCourse() {
   });
   const [addingQuestion, setAddingQuestion] = useState(false);
 
-  const [quizSectionOpen, setQuizSectionOpen] = useState(false);
+  const [quizSectionOpen, setQuizSectionOpen] = useState(true);
+  const [quizImportOpen, setQuizImportOpen] = useState(false);
+  const [quizImportText, setQuizImportText] = useState("");
+  const [importingQuizBatch, setImportingQuizBatch] = useState(false);
 
   const [contentForm, setContentForm] = useState({
     title: "",
@@ -241,7 +290,7 @@ export default function EditCourse() {
     }
     setCreatingQuiz(true);
     try {
-      await quizzesApi.create({
+      const createRes = await quizzesApi.create({
         course_id: Number(id),
         title: newQuiz.title.trim(),
         pass_score: Number(newQuiz.pass_score) || 50,
@@ -251,7 +300,8 @@ export default function EditCourse() {
           : undefined,
         is_published: newQuiz.is_published,
       });
-      showToast("Quiz created", "success");
+      const newQuizId = createRes.data?.quiz_id;
+      showToast("Quiz created — add questions below", "success");
       setNewQuiz({
         title: "",
         pass_score: 70,
@@ -260,6 +310,21 @@ export default function EditCourse() {
         is_published: false,
       });
       await reloadCourse();
+      setQuizSectionOpen(true);
+      if (newQuizId) {
+        setExpandedQuizId(newQuizId);
+        setQuizDetailLoading(true);
+        try {
+          const detailRes = await quizzesApi.get(newQuizId);
+          setQuizDetail(detailRes.data);
+          setQuestionType("mcq");
+        } catch {
+          setExpandedQuizId(null);
+          setQuizDetail(null);
+        } finally {
+          setQuizDetailLoading(false);
+        }
+      }
     } catch (err) {
       showToast(err.response?.data?.error || "Could not create quiz", "error");
     } finally {
@@ -399,6 +464,67 @@ export default function EditCourse() {
     } finally {
       setAddingQuestion(false);
     }
+  };
+
+  const runQuizImport = async () => {
+    if (!expandedQuizId) return;
+    const raw = quizImportText.trim();
+    if (!raw) {
+      showToast("Paste JSON or choose a file first", "error");
+      return;
+    }
+    let rows;
+    try {
+      const parsed = JSON.parse(raw);
+      rows = normalizeImportQuestions(parsed).map(validateImportQuestion);
+    } catch (err) {
+      showToast(err.message || "Invalid JSON", "error");
+      return;
+    }
+    if (rows.length === 0) {
+      showToast("No questions found in JSON", "error");
+      return;
+    }
+
+    setImportingQuizBatch(true);
+    let baseCount = quizDetail?.questions?.length ?? 0;
+    try {
+      for (let i = 0; i < rows.length; i++) {
+        const q = rows[i];
+        await quizzesApi.addQuestion(expandedQuizId, {
+          question_type: q.question_type,
+          question_text: q.question_text,
+          points: q.points,
+          sort_order: baseCount + i,
+          options: q.options,
+        });
+      }
+      const res = await quizzesApi.get(expandedQuizId);
+      setQuizDetail(res.data);
+      setQuizImportText("");
+      setQuizImportOpen(false);
+      showToast(`Imported ${rows.length} question(s)`, "success");
+    } catch (err) {
+      showToast(
+        err.response?.data?.error || err.message || "Import failed",
+        "error",
+      );
+    } finally {
+      setImportingQuizBatch(false);
+    }
+  };
+
+  const onQuizImportFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setQuizImportText(String(reader.result || ""));
+      showToast("File loaded — review JSON, then Import", "success");
+    };
+    reader.onerror = () => showToast("Could not read file", "error");
+    reader.readAsText(file);
+    e.target.value = "";
   };
 
   if (loading)
@@ -1054,6 +1180,28 @@ export default function EditCourse() {
                     ) : quizDetail ? (
                       <>
                         <p
+                          className="text-xs mb-4 rounded px-3 py-2"
+                          style={{
+                            background: "var(--bg-hover)",
+                            color: "var(--text-secondary)",
+                            border: "1px solid var(--border)",
+                          }}
+                        >
+                          Add <strong>multiple choice</strong> or{" "}
+                          <strong>true/false</strong> using the form below, or{" "}
+                          <strong>import many at once</strong> from a JSON file.
+                          Download a sample:{" "}
+                          <a
+                            href="/quiz-import-template.json"
+                            download="quiz-import-template.json"
+                            className="underline"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            quiz-import-template.json
+                          </a>
+                          .
+                        </p>
+                        <p
                           className="text-xs font-medium uppercase tracking-wide mb-3"
                           style={{ color: "var(--text-muted)" }}
                         >
@@ -1256,6 +1404,81 @@ export default function EditCourse() {
                             )}
                           </button>
                         </form>
+
+                        <div
+                          className="mt-6 pt-6"
+                          style={{ borderTop: "1px solid var(--border)" }}
+                        >
+                          <button
+                            type="button"
+                            className="w-full flex items-center justify-between gap-2 text-left mb-3"
+                            onClick={() => setQuizImportOpen((v) => !v)}
+                            style={{ color: "var(--text-primary)" }}
+                            aria-expanded={quizImportOpen}
+                          >
+                            <span
+                              className="text-xs font-medium uppercase tracking-wide"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              Import questions (JSON)
+                            </span>
+                            <span
+                              className="text-lg"
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              {quizImportOpen ? "−" : "+"}
+                            </span>
+                          </button>
+                          {quizImportOpen && (
+                            <div className="flex flex-col gap-3">
+                              <p
+                                className="text-xs"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                Paste an array of questions, or use{" "}
+                                <code className="text-[11px]">{`{ "questions": [ ... ] }`}</code>.
+                                Each needs{" "}
+                                <code className="text-[11px]">question_type</code>,{" "}
+                                <code className="text-[11px]">question_text</code>,{" "}
+                                <code className="text-[11px]">options</code> (min 2;
+                                one <code className="text-[11px]">is_correct: true</code>
+                                ).
+                              </p>
+                              <div className="flex flex-wrap gap-2 items-center">
+                                <label className="btn-ghost text-xs cursor-pointer py-1.5 px-3">
+                                  Choose .json file
+                                  <input
+                                    type="file"
+                                    accept=".json,application/json"
+                                    className="hidden"
+                                    onChange={onQuizImportFile}
+                                  />
+                                </label>
+                              </div>
+                              <textarea
+                                className="input-field text-xs font-mono"
+                                rows={10}
+                                placeholder='[ { "question_type": "mcq", "question_text": "...", "points": 1, "options": [ ... ] } ]'
+                                value={quizImportText}
+                                onChange={(e) =>
+                                  setQuizImportText(e.target.value)
+                                }
+                              />
+                              <button
+                                type="button"
+                                className="btn-primary text-sm self-start"
+                                disabled={importingQuizBatch}
+                                onClick={runQuizImport}
+                              >
+                                {importingQuizBatch ? (
+                                  <Spinner size={14} />
+                                ) : (
+                                  "Import into this quiz"
+                                )}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </>
                     ) : null}
                   </div>
