@@ -13,8 +13,8 @@ const {
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
 
-// POST /api/v1/transactions/callback  — public, called by Safepay's servers
-// Must be BEFORE router.use(verifyToken) — Safepay has no JWT
+// POST /api/v1/transactions/callback  — PUBLIC, no JWT
+// Safepay POSTs here after payment. Must be BEFORE router.use(verifyToken).
 router.post("/callback", handleCallback);
 
 router.use(verifyToken);

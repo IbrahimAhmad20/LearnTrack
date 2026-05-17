@@ -139,10 +139,10 @@ async function initiateTransaction(req, res, next) {
       });
 
       console.log(
-        "[Safepay] redirectUrl being sent to Safepay:",
+        "[Safepay] redirectUrl →",
         `${serverOrigin}/api/v1/transactions/callback`,
       );
-      console.log("[Safepay] full checkout URL:", checkoutUrl);
+      console.log("[Safepay] checkout URL →", checkoutUrl);
 
       res.json({ checkout_url: checkoutUrl, tx_id: tx.tx_id });
     } else {
@@ -399,8 +399,8 @@ async function refundTransaction(req, res, next) {
 }
 
 // ── GET /api/v1/transactions/:txId/status ─────────────────────────────────────
-// Frontend polls this while student completes payment in Safepay tab.
-// Simply reads our own DB — which handleCallback updates when Safepay POSTs.
+// Frontend polls this while the student completes payment.
+// Simply reads our DB — handleCallback updates it when Safepay POSTs.
 async function checkTransactionStatus(req, res, next) {
   try {
     const userId = req.user.user_id;
@@ -410,11 +410,10 @@ async function checkTransactionStatus(req, res, next) {
       .from("transactions")
       .select("tx_id, course_id, status")
       .eq("tx_id", txId)
-      .eq("user_id", userId) // ownership check
+      .eq("user_id", userId)
       .maybeSingle();
 
     if (!tx) return res.status(404).json({ error: "Transaction not found" });
-
     return res.json({ status: tx.status, course_id: tx.course_id });
   } catch (err) {
     next(err);
@@ -423,75 +422,67 @@ async function checkTransactionStatus(req, res, next) {
 
 // ── POST /api/v1/transactions/callback ────────────────────────────────────────
 // Safepay POSTs here after payment (redirectUrl in checkout).
-// No auth — Safepay's servers hit this directly. CORS is opened in app.js.
-// Verifies HMAC, marks tx completed, enrolls student, redirects browser to
-// the React success page.
+// No JWT — Safepay's servers hit this directly. CORS opened in app.js.
 async function handleCallback(req, res, next) {
   try {
-    console.log("[Safepay callback] body:", JSON.stringify(req.body));
+    console.log("[Safepay callback] received body:", JSON.stringify(req.body));
 
     const { tracker, sig, order_id } = req.body;
+    const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 
     if (!sig || !tracker || !order_id) {
-      console.error("[Safepay callback] missing fields:", req.body);
-      // Redirect to error page so the browser lands somewhere useful
-      const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+      console.error("[Safepay callback] missing required fields:", req.body);
       return res.redirect(
         `${clientOrigin}/payment/success?error=missing_params`,
       );
     }
 
-    // ── 1. Look up transaction by order_id ────────────────────────────────────
     const txId = Number(order_id);
     const { data: tx } = await supabase
       .from("transactions")
-      .select("tx_id, user_id, course_id, status, gateway_reference")
+      .select("tx_id, user_id, course_id, status")
       .eq("tx_id", txId)
       .maybeSingle();
 
     if (!tx) {
-      console.error("[Safepay callback] tx not found for order_id:", order_id);
-      const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+      console.error("[Safepay callback] no tx found for order_id:", order_id);
       return res.redirect(`${clientOrigin}/payment/success?error=tx_not_found`);
     }
 
-    const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
-
-    // Already handled (idempotent)
+    // Idempotent
     if (tx.status === "completed") {
       return res.redirect(
         `${clientOrigin}/payment/success?verified=1&courseId=${tx.course_id}`,
       );
     }
 
-    // ── 2. Verify HMAC signature ──────────────────────────────────────────────
+    // Verify HMAC signature
     const hasSafepayKeys =
       process.env.SAFEPAY_API_KEY && process.env.SAFEPAY_API_KEY !== "your_key";
-
     if (hasSafepayKeys) {
       const valid = safepay.verify.signature({ body: { sig, tracker } });
       if (!valid) {
-        console.error("[Safepay callback] invalid signature");
+        console.error("[Safepay callback] invalid HMAC signature");
         return res.redirect(
           `${clientOrigin}/payment/success?error=invalid_sig`,
         );
       }
     }
 
-    // ── 3. Mark completed ─────────────────────────────────────────────────────
+    // Mark completed
     const { error: updateErr } = await supabase
       .from("transactions")
       .update({ status: "completed" })
       .eq("tx_id", txId);
-
     if (updateErr) throw new Error(updateErr.message);
 
-    // ── 4. Enroll student ─────────────────────────────────────────────────────
+    // Enroll student
     await enrollStudent(tx.user_id, tx.course_id);
 
-    console.log(`[Safepay callback] tx ${txId} completed, student enrolled`);
+    console.log(
+      `[Safepay callback] ✓ tx ${txId} completed, user ${tx.user_id} enrolled in course ${tx.course_id}`,
+    );
 
-    // ── 5. Browser-redirect to React success page ─────────────────────────────
     return res.redirect(
       `${clientOrigin}/payment/success?verified=1&courseId=${tx.course_id}`,
     );
