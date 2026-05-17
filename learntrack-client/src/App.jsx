@@ -16,6 +16,7 @@ import EditCourse from "./pages/instructor/EditCourse";
 import InstructorAnalytics from "./pages/instructor/Analytics";
 import InstructorReviews from "./pages/instructor/Reviews";
 import Earnings from "./pages/instructor/Earnings";
+import InstructorProfile from "./pages/instructor/Profile";
 
 import StudentDashboard from "./pages/student/Dashboard";
 import CourseList from "./pages/student/CourseList";
@@ -64,6 +65,7 @@ export default function App() {
               <Route path="analytics" element={<InstructorAnalytics />} />
               <Route path="reviews" element={<InstructorReviews />} />
               <Route path="earnings" element={<Earnings />} />
+              <Route path="profile" element={<InstructorProfile />} />
             </Route>
 
             {/* Student */}

@@ -200,3 +200,51 @@ export const notifications = {
 export const categories = {
   list: () => api.get("/courses/categories"),
 };
+
+// ── Uploads ─────────────────────────────────────────────────────────────────
+export const uploads = {
+  /** Upload (or replace) a course thumbnail. Sends multipart/form-data. */
+  thumbnail: (courseId, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post(`/uploads/courses/${courseId}/thumbnail`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
+  /** Upload a course content file (PDF, video, etc.). */
+  courseFile: (courseId, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post(`/uploads/courses/${courseId}/files`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
+  /** List all files attached to a course. */
+  listCourseFiles: (courseId) => api.get(`/uploads/courses/${courseId}/files`),
+
+  /** Delete a course file by its file_id. */
+  deleteCourseFile: (courseId, fileId) =>
+    api.delete(`/uploads/courses/${courseId}/files/${fileId}`),
+
+  /** Upload the current user's avatar. */
+  avatar: (file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post("/uploads/avatar", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+};
+// ── Instructor Profile ───────────────────────────────────────────────────────
+export const instructorProfile = {
+  /** Fetch the authenticated instructor's own profile. */
+  me: () => api.get("/instructors/me"),
+
+  /** Update the authenticated instructor's profile (department, qualification, etc.). */
+  update: (data) => api.put("/instructors/me", data),
+
+  /** Fetch a public instructor profile by ID (no auth required). */
+  public: (instructorId) => api.get(`/instructors/${instructorId}/public`),
+};

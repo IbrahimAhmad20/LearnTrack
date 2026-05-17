@@ -119,7 +119,7 @@ export default function CourseList() {
                 status={isEnrolled ? "enrolled" : "available"}
                 progress={isEnrolled ? 100 : 0}
                 description={course.description}
-                instructor={course.category}
+                instructor={course.instructors?.users?.full_name}
                 thumbnail_url={course.thumbnail_url}
                 action={
                   isEnrolled ? (
@@ -133,20 +133,14 @@ export default function CourseList() {
                     </button>
                   ) : (
                     <button
-                      onClick={() => handleBuyOrEnroll(course)}
-                      disabled={enrolling === course.course_id}
+                      onClick={() =>
+                        navigate(`/student/courses/${course.course_id}`)
+                      }
                       className="btn-primary w-full justify-center text-xs py-1.5"
-                      style={{
-                        opacity: enrolling === course.course_id ? 0.7 : 1,
-                      }}
                     >
-                      {enrolling === course.course_id ? (
-                        <Spinner size={13} />
-                      ) : Number(course.price) > 0 ? (
-                        `Buy — PKR ${Number(course.discounted_price ?? course.price).toLocaleString()}`
-                      ) : (
-                        "Enroll free"
-                      )}
+                      {Number(course.price) > 0
+                        ? `View — PKR ${Number(course.discounted_price ?? course.price).toLocaleString()}`
+                        : "View course →"}
                     </button>
                   )
                 }

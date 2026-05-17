@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { courses as coursesApi, quizzes as quizzesApi } from "../../api";
+import {
+  courses as coursesApi,
+  quizzes as quizzesApi,
+  uploads,
+} from "../../api";
 import { Spinner, ErrorMessage, Badge } from "../../components/ui";
 import { useToast } from "../../components";
+import FileUpload from "../../components/FileUpload";
 
 function emptyMcqOptions(n = 4) {
   return Array.from({ length: n }, (_, i) => ({
@@ -115,6 +120,9 @@ export default function EditCourse() {
   const [savingEditContent, setSavingEditContent] = useState(false);
 
   const contentLocked = addingContent !== null || savingEditContent;
+  const [thumbnailUrl, setThumbnailUrl] = useState("");
+  const [courseFiles, setCourseFiles] = useState([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
 
   const reloadCourse = useCallback(() => {
     return coursesApi
@@ -128,6 +136,7 @@ export default function EditCourse() {
       .get(id)
       .then((r) => {
         setCourse(r.data);
+        setThumbnailUrl(r.data.thumbnail_url || "");
         setForm({
           title: r.data.title || "",
           description: r.data.description || "",
@@ -142,6 +151,16 @@ export default function EditCourse() {
       })
       .catch(() => setError("Course not found"))
       .finally(() => setLoading(false));
+
+    // Load course files
+    setLoadingFiles(true);
+    uploads
+      .listCourseFiles(id)
+      .then((r) => {
+        setCourseFiles(r.data || []);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingFiles(false));
   }, [id]);
 
   useEffect(() => {
@@ -616,6 +635,22 @@ export default function EditCourse() {
               style={{ resize: "none" }}
             />
           </div>
+
+          {/* Thumbnail upload */}
+          <div>
+            <FileUpload
+              type="image"
+              accept="image/jpeg,image/png,image/webp"
+              label="Course Thumbnail"
+              hint="JPG, PNG or WebP · max 10 MB · recommended 1280×720"
+              preview={thumbnailUrl}
+              onUpload={async (file) => {
+                const res = await uploads.thumbnail(id, file);
+                setThumbnailUrl(res.data?.thumbnail_url || "");
+                showToast("Thumbnail updated", "success");
+              }}
+            />
+          </div>
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="label">Price (PKR)</label>
@@ -691,6 +726,123 @@ export default function EditCourse() {
             </button>
           </div>
         </form>
+      </div>
+
+      {/* ── Course Files ─────────────────────────────────────────────────── */}
+      <div className="card p-6 mb-6">
+        <h2
+          className="text-sm font-medium mb-1"
+          style={{ color: "var(--text-primary)" }}
+        >
+          Course Files
+        </h2>
+        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          Attach PDFs, slide decks, videos, or other resources for enrolled
+          students.
+        </p>
+
+        <FileUpload
+          type="file"
+          accept=".pdf,.mp4,.webm,.pptx,.ppt,.docx,.doc,.zip,.txt,video/*,application/pdf"
+          hint="PDF, MP4, PPTX, DOCX, ZIP · max 500 MB"
+          onUpload={async (file) => {
+            const res = await uploads.courseFile(id, file);
+            setCourseFiles((prev) => [...prev, res.data]);
+            showToast("File uploaded", "success");
+          }}
+        />
+
+        {loadingFiles ? (
+          <div className="flex justify-center pt-4">
+            <Spinner size={20} />
+          </div>
+        ) : courseFiles.length > 0 ? (
+          <div
+            className="mt-4"
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              overflow: "hidden",
+            }}
+          >
+            {courseFiles.map((f, i) => (
+              <div
+                key={f.file_id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 14px",
+                  borderBottom:
+                    i < courseFiles.length - 1
+                      ? "1px solid var(--border)"
+                      : "none",
+                  background: "var(--bg-raised)",
+                }}
+              >
+                <span style={{ fontSize: 18, flexShrink: 0 }}>
+                  {f.mime_type?.startsWith("video")
+                    ? "🎬"
+                    : f.mime_type === "application/pdf"
+                      ? "📄"
+                      : f.mime_type?.includes("presentation")
+                        ? "📊"
+                        : "📁"}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p
+                    className="text-sm truncate"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    {f.file_name}
+                  </p>
+                  <p
+                    className="text-xs"
+                    style={{
+                      color: "var(--text-muted)",
+                      fontFamily: "DM Mono, monospace",
+                    }}
+                  >
+                    {f.file_size
+                      ? `${(f.file_size / (1024 * 1024)).toFixed(1)} MB`
+                      : ""}
+                  </p>
+                </div>
+                <a
+                  href={f.file_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-ghost"
+                  style={{ fontSize: 11, padding: "2px 10px" }}
+                >
+                  View
+                </a>
+                <button
+                  onClick={async () => {
+                    try {
+                      await uploads.deleteCourseFile(id, f.file_id);
+                      setCourseFiles((prev) =>
+                        prev.filter((x) => x.file_id !== f.file_id),
+                      );
+                      showToast("File removed", "success");
+                    } catch {
+                      showToast("Failed to delete file", "error");
+                    }
+                  }}
+                  className="btn-ghost"
+                  style={{
+                    fontSize: 11,
+                    padding: "2px 10px",
+                    color: "var(--error, #e07a73)",
+                    borderColor: "var(--error, #e07a73)",
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="card p-6 mb-6">

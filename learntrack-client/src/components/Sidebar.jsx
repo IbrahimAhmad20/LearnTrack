@@ -49,6 +49,7 @@ const NAV = {
     { to: "/instructor/analytics", label: "Analytics", icon: "◈" },
     { to: "/instructor/reviews", label: "Reviews", icon: "★" },
     { to: "/instructor/earnings", label: "Earnings", icon: "◑" },
+    { to: "/instructor/profile", label: "Profile", icon: "◐" },
   ],
   student: [
     { to: "/student", label: "Dashboard", icon: "⬡", end: true },

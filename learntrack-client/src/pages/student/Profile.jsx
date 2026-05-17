@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../components/Toast";
 import { ErrorMessage, Spinner } from "../../components/ui";
-import api from "../../api";
+import FileUpload from "../../components/FileUpload";
+import api, { uploads } from "../../api";
 
 function InitialsAvatar({ name = "", size = 80 }) {
   const initials = name
@@ -41,29 +42,32 @@ export default function Profile() {
   const [form, setForm] = useState({
     full_name: user?.full_name || "",
     bio: user?.bio || "",
-    avatar_url: user?.avatar_url || "",
   });
   const [original, setOriginal] = useState({ ...form });
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [avatarErr, setAvatarErr] = useState(false);
 
   useEffect(() => {
     if (user) {
-      const init = {
-        full_name: user.full_name || "",
-        bio: user.bio || "",
-        avatar_url: user.avatar_url || "",
-      };
+      const init = { full_name: user.full_name || "", bio: user.bio || "" };
       setForm(init);
       setOriginal(init);
+      setAvatarUrl(user.avatar_url || "");
     }
   }, [user]);
 
   const isDirty =
-    form.full_name !== original.full_name ||
-    form.bio !== original.bio ||
-    form.avatar_url !== original.avatar_url;
+    form.full_name !== original.full_name || form.bio !== original.bio;
+
+  // Called by FileUpload when user picks an avatar image
+  async function handleAvatarUpload(file) {
+    const res = await uploads.avatar(file);
+    const url = res.data?.avatar_url;
+    setAvatarUrl(url || "");
+    await refreshUser();
+    toast?.success?.("Avatar updated");
+  }
 
   const handleSave = async () => {
     if (!form.full_name.trim()) {
@@ -76,7 +80,6 @@ export default function Profile() {
       await api.put("/users/me", {
         full_name: form.full_name.trim(),
         bio: form.bio.trim(),
-        avatar_url: form.avatar_url.trim() || null,
       });
       await refreshUser();
       setOriginal({ ...form });
@@ -88,8 +91,6 @@ export default function Profile() {
     }
   };
 
-  const showAvatar = form.avatar_url && !avatarErr;
-
   return (
     <div className="p-8 page-enter">
       <h1
@@ -100,7 +101,7 @@ export default function Profile() {
       </h1>
 
       <div style={{ maxWidth: 560 }}>
-        {/* Avatar section */}
+        {/* Avatar */}
         <div className="card p-6 mb-4">
           <h2
             className="text-xs uppercase tracking-widest mb-4"
@@ -111,12 +112,11 @@ export default function Profile() {
           >
             Avatar
           </h2>
-          <div className="flex items-center gap-5 mb-4">
-            {showAvatar ? (
+          <div className="flex items-start gap-5">
+            {avatarUrl ? (
               <img
-                src={form.avatar_url}
-                alt="Avatar preview"
-                onError={() => setAvatarErr(true)}
+                src={avatarUrl}
+                alt="Avatar"
                 style={{
                   width: 80,
                   height: 80,
@@ -132,24 +132,14 @@ export default function Profile() {
                 size={80}
               />
             )}
-            <div className="flex-1">
-              <label className="label">Avatar URL</label>
-              <input
-                type="url"
-                value={form.avatar_url}
-                onChange={(e) => {
-                  setAvatarErr(false);
-                  setForm((p) => ({ ...p, avatar_url: e.target.value }));
-                }}
-                placeholder="https://example.com/your-photo.jpg"
-                className="input-field"
+            <div style={{ flex: 1 }}>
+              <FileUpload
+                type="image"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                label=""
+                hint="JPG, PNG, WebP or GIF · max 5 MB"
+                onUpload={handleAvatarUpload}
               />
-              <p
-                className="text-xs mt-1"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Paste an image URL to update your avatar
-              </p>
             </div>
           </div>
         </div>
@@ -203,7 +193,7 @@ export default function Profile() {
               }
               className="input-field"
               rows={4}
-              placeholder="Tell students a bit about yourself…"
+              placeholder="Tell others a bit about yourself…"
               style={{ resize: "vertical", minHeight: 90 }}
             />
           </div>

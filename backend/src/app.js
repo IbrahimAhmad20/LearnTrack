@@ -22,6 +22,7 @@ const reviewRoutes = require("./routes/reviews"); // [CF2] reviews & ratings
 const transactionRoutes = require("./routes/transactions"); // [CF1] payments
 const certificateRoutes = require("./routes/certificates"); // [CF3] certificates
 const notificationRoutes = require("./routes/notifications"); // [CF5] notifications
+const uploadRoutes = require("./routes/uploads"); // [CF6] S3 file uploads
 
 const app = express();
 
@@ -61,6 +62,7 @@ app.use("/api/v1/reviews", reviewRoutes); // [CF2]
 app.use("/api/v1/transactions", transactionRoutes); // [CF1]
 app.use("/api/v1/certificates", certificateRoutes); // [CF3]
 app.use("/api/v1/notifications", notificationRoutes); // [CF5]
+app.use("/api/v1/uploads", uploadRoutes); // [CF6]
 
 app.get("/api/v1/health", (_req, res) =>
   res.json({ status: "ok", timestamp: new Date() }),

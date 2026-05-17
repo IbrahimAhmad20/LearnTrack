@@ -10,6 +10,7 @@
     "seed:auth": "node scripts/seed-auth-users.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1048.0",
     "@sfpy/node-sdk": "^3.0.2",
     "@supabase/supabase-js": "^2.43.4",
     "bcrypt": "^5.1.1",
@@ -21,6 +22,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "multer": "^2.1.1",
     "pdfkit": "^0.18.0"
   },
   "devDependencies": {

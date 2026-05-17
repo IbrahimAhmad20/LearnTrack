@@ -1,21 +1,22 @@
-const bcrypt = require('bcrypt');
-const { supabase } = require('../db/connection');
+const bcrypt = require("bcrypt");
+const { supabase } = require("../db/connection");
 
 // ── GET /api/v1/users/me ──────────────────────────────────────────────────────
 async function getMe(req, res, next) {
   try {
     const { data, error } = await supabase
-      .from('users')
-      .select('user_id, full_name, email, role, bio, avatar_url, created_at')
-      .eq('user_id', req.user.user_id)
+      .from("users")
+      .select("user_id, full_name, email, role, bio, avatar_url, created_at")
+      .eq("user_id", req.user.user_id)
       .single();
 
-    if (error || !data) return res.status(404).json({ error: 'User not found' });
+    if (error || !data)
+      return res.status(404).json({ error: "User not found" });
 
     const { data: instProfile } = await supabase
-      .from('instructors')
-      .select('instructor_id, department, qualification')
-      .eq('user_id', req.user.user_id)
+      .from("instructors")
+      .select("instructor_id, department, qualification")
+      .eq("user_id", req.user.user_id)
       .maybeSingle();
 
     res.json({
@@ -30,21 +31,20 @@ async function getMe(req, res, next) {
 // ── PUT /api/v1/users/me ──────────────────────────────────────────────────────
 async function updateMe(req, res, next) {
   try {
-    const { full_name, bio, avatar_url, password } = req.body;
+    const { full_name, bio, password } = req.body;
     const updates = { updated_at: new Date().toISOString() };
 
-    if (full_name)  updates.full_name  = full_name;
-    if (bio)        updates.bio        = bio;
-    if (avatar_url) updates.avatar_url = avatar_url;
-    if (password)   updates.password   = await bcrypt.hash(password, 12);
+    if (full_name) updates.full_name = full_name;
+    if (bio !== undefined) updates.bio = bio;
+    if (password) updates.password = await bcrypt.hash(password, 12);
 
     const { error } = await supabase
-      .from('users')
+      .from("users")
       .update(updates)
-      .eq('user_id', req.user.user_id);
+      .eq("user_id", req.user.user_id);
 
     if (error) throw new Error(error.message);
-    res.json({ message: 'Profile updated' });
+    res.json({ message: "Profile updated" });
   } catch (err) {
     next(err);
   }
@@ -56,15 +56,14 @@ async function updateMe(req, res, next) {
 async function listUsers(req, res, next) {
   try {
     const PAGE = 1000;
-    const select =
-      'user_id, full_name, email, role, is_active, created_at';
+    const select = "user_id, full_name, email, role, is_active, created_at";
     const all = [];
     let from = 0;
     for (;;) {
       const { data, error } = await supabase
-        .from('users')
+        .from("users")
         .select(select)
-        .order('created_at', { ascending: false })
+        .order("created_at", { ascending: false })
         .range(from, from + PAGE - 1);
 
       if (error) throw new Error(error.message);
@@ -82,30 +81,32 @@ async function listUsers(req, res, next) {
 // user_id is UUID — never use Number(id) (that yields NaN and deletes nothing).
 async function deleteUser(req, res, next) {
   try {
-    const userId = String(req.params.id || '').trim();
+    const userId = String(req.params.id || "").trim();
     if (!userId) {
-      return res.status(400).json({ error: 'Invalid user id' });
+      return res.status(400).json({ error: "Invalid user id" });
     }
     if (userId === req.user.user_id) {
-      return res.status(400).json({ error: 'You cannot delete your own account' });
+      return res
+        .status(400)
+        .json({ error: "You cannot delete your own account" });
     }
 
     const { error } = await supabase
-      .from('users')
+      .from("users")
       .delete()
-      .eq('user_id', userId);
+      .eq("user_id", userId);
 
     if (error) {
-      const code = error.code || '';
-      const msg = (error.message || '').toLowerCase();
+      const code = error.code || "";
+      const msg = (error.message || "").toLowerCase();
       if (
-        code === '23503' ||
-        msg.includes('foreign key') ||
-        msg.includes('violates foreign key')
+        code === "23503" ||
+        msg.includes("foreign key") ||
+        msg.includes("violates foreign key")
       ) {
         return res.status(409).json({
           error:
-            'Cannot delete this user while they still own courses or have records that block removal. Remove or reassign those first, or deactivate the account instead.',
+            "Cannot delete this user while they still own courses or have records that block removal. Remove or reassign those first, or deactivate the account instead.",
         });
       }
       throw new Error(error.message);
@@ -113,10 +114,10 @@ async function deleteUser(req, res, next) {
 
     const { error: authErr } = await supabase.auth.admin.deleteUser(userId);
     if (authErr) {
-      console.warn('auth.admin.deleteUser after DB delete:', authErr.message);
+      console.warn("auth.admin.deleteUser after DB delete:", authErr.message);
     }
 
-    res.json({ message: 'User deleted' });
+    res.json({ message: "User deleted" });
   } catch (err) {
     next(err);
   }
@@ -125,18 +126,18 @@ async function deleteUser(req, res, next) {
 // ── PUT /api/v1/users/:id/status  (admin toggle active) ──────────────────────
 async function setUserStatus(req, res, next) {
   try {
-    const userId = String(req.params.id || '').trim();
+    const userId = String(req.params.id || "").trim();
     if (!userId) {
-      return res.status(400).json({ error: 'Invalid user id' });
+      return res.status(400).json({ error: "Invalid user id" });
     }
 
     const { error } = await supabase
-      .from('users')
+      .from("users")
       .update({ is_active: req.body.is_active })
-      .eq('user_id', userId);
+      .eq("user_id", userId);
 
     if (error) throw new Error(error.message);
-    res.json({ message: 'User status updated' });
+    res.json({ message: "User status updated" });
   } catch (err) {
     next(err);
   }
