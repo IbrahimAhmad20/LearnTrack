@@ -99,6 +99,9 @@ async function initiateTransaction(req, res, next) {
       process.env.SAFEPAY_API_KEY && process.env.SAFEPAY_API_KEY !== "your_key";
 
     const baseUrl = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+    const serverOrigin =
+      process.env.SERVER_ORIGIN ||
+      `http://localhost:${process.env.PORT || 5000}`;
     let token, checkoutUrl;
 
     if (hasSafepayKeys) {
@@ -130,10 +133,16 @@ async function initiateTransaction(req, res, next) {
         token,
         orderId: String(tx.tx_id),
         cancelUrl: `${baseUrl}/payment/cancel`,
-        redirectUrl: `${baseUrl}/payment/success`,
+        redirectUrl: `${serverOrigin}/api/v1/transactions/callback`,
         source: "custom",
         webhooks: false,
       });
+
+      console.log(
+        "[Safepay] redirectUrl being sent to Safepay:",
+        `${serverOrigin}/api/v1/transactions/callback`,
+      );
+      console.log("[Safepay] full checkout URL:", checkoutUrl);
 
       res.json({ checkout_url: checkoutUrl, tx_id: tx.tx_id });
     } else {
@@ -390,91 +399,102 @@ async function refundTransaction(req, res, next) {
 }
 
 // ── GET /api/v1/transactions/:txId/status ─────────────────────────────────────
-// Frontend polls this after redirecting student to Safepay.
-// Checks Safepay's API directly for payment status — no tunnel/webhook needed.
-// If Safepay says paid, marks tx completed and enrolls the student immediately.
+// Frontend polls this while student completes payment in Safepay tab.
+// Simply reads our own DB — which handleCallback updates when Safepay POSTs.
 async function checkTransactionStatus(req, res, next) {
   try {
     const userId = req.user.user_id;
     const txId = Number(req.params.txId);
 
-    // ── 1. Load the transaction ───────────────────────────────────────────────
     const { data: tx } = await supabase
       .from("transactions")
-      .select("tx_id, user_id, course_id, status, gateway_reference")
+      .select("tx_id, course_id, status")
       .eq("tx_id", txId)
       .eq("user_id", userId) // ownership check
       .maybeSingle();
 
     if (!tx) return res.status(404).json({ error: "Transaction not found" });
 
-    // Already done — return immediately
-    if (tx.status === "completed") {
-      return res.json({ status: "completed", course_id: tx.course_id });
-    }
-    if (tx.status === "failed" || tx.status === "refunded") {
-      return res.json({ status: tx.status });
+    return res.json({ status: tx.status, course_id: tx.course_id });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── POST /api/v1/transactions/callback ────────────────────────────────────────
+// Safepay POSTs here after payment (redirectUrl in checkout).
+// No auth — Safepay's servers hit this directly. CORS is opened in app.js.
+// Verifies HMAC, marks tx completed, enrolls student, redirects browser to
+// the React success page.
+async function handleCallback(req, res, next) {
+  try {
+    console.log("[Safepay callback] body:", JSON.stringify(req.body));
+
+    const { tracker, sig, order_id } = req.body;
+
+    if (!sig || !tracker || !order_id) {
+      console.error("[Safepay callback] missing fields:", req.body);
+      // Redirect to error page so the browser lands somewhere useful
+      const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+      return res.redirect(
+        `${clientOrigin}/payment/success?error=missing_params`,
+      );
     }
 
-    // ── 2. Ask Safepay for the current payment status ─────────────────────────
-    const isMock = tx.gateway_reference?.startsWith("mock_");
+    // ── 1. Look up transaction by order_id ────────────────────────────────────
+    const txId = Number(order_id);
+    const { data: tx } = await supabase
+      .from("transactions")
+      .select("tx_id, user_id, course_id, status, gateway_reference")
+      .eq("tx_id", txId)
+      .maybeSingle();
+
+    if (!tx) {
+      console.error("[Safepay callback] tx not found for order_id:", order_id);
+      const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+      return res.redirect(`${clientOrigin}/payment/success?error=tx_not_found`);
+    }
+
+    const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+
+    // Already handled (idempotent)
+    if (tx.status === "completed") {
+      return res.redirect(
+        `${clientOrigin}/payment/success?verified=1&courseId=${tx.course_id}`,
+      );
+    }
+
+    // ── 2. Verify HMAC signature ──────────────────────────────────────────────
     const hasSafepayKeys =
       process.env.SAFEPAY_API_KEY && process.env.SAFEPAY_API_KEY !== "your_key";
 
-    if (isMock || !hasSafepayKeys) {
-      // Mock mode — just return pending; mock flow uses /verify directly
-      return res.json({ status: "pending" });
+    if (hasSafepayKeys) {
+      const valid = safepay.verify.signature({ body: { sig, tracker } });
+      if (!valid) {
+        console.error("[Safepay callback] invalid signature");
+        return res.redirect(
+          `${clientOrigin}/payment/success?error=invalid_sig`,
+        );
+      }
     }
 
-    // Call Safepay's payment retrieval API using the tracker token
-    const token = tx.gateway_reference;
-    const sfpayHost =
-      process.env.SAFEPAY_ENV === "production"
-        ? "https://api.getsafepay.com"
-        : "https://sandbox.api.getsafepay.com";
+    // ── 3. Mark completed ─────────────────────────────────────────────────────
+    const { error: updateErr } = await supabase
+      .from("transactions")
+      .update({ status: "completed" })
+      .eq("tx_id", txId);
 
-    const sfpayRes = await fetch(`${sfpayHost}/order/v1/payments/${token}`, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-SFPY-SECRET-KEY": process.env.SAFEPAY_API_KEY,
-      },
-    });
+    if (updateErr) throw new Error(updateErr.message);
 
-    if (!sfpayRes.ok) {
-      // Safepay API error — don't crash, just report pending
-      console.error("[status check] Safepay API error:", sfpayRes.status);
-      return res.json({ status: "pending" });
-    }
+    // ── 4. Enroll student ─────────────────────────────────────────────────────
+    await enrollStudent(tx.user_id, tx.course_id);
 
-    const sfpayData = await sfpayRes.json();
-    console.log("[status check] Safepay response:", JSON.stringify(sfpayData));
+    console.log(`[Safepay callback] tx ${txId} completed, student enrolled`);
 
-    // Safepay payment states: PAID, CANCELLED, UNPAID, etc.
-    const sfpayState = sfpayData?.data?.state || sfpayData?.state || "";
-
-    if (sfpayState === "PAID" || sfpayState === "paid") {
-      // ── 3. Mark completed in our DB ─────────────────────────────────────────
-      await supabase
-        .from("transactions")
-        .update({ status: "completed" })
-        .eq("tx_id", txId);
-
-      // ── 4. Enroll student ───────────────────────────────────────────────────
-      await enrollStudent(userId, tx.course_id);
-
-      return res.json({ status: "completed", course_id: tx.course_id });
-    }
-
-    if (sfpayState === "CANCELLED" || sfpayState === "cancelled") {
-      await supabase
-        .from("transactions")
-        .update({ status: "failed" })
-        .eq("tx_id", txId);
-      return res.json({ status: "failed" });
-    }
-
-    // Still pending
-    return res.json({ status: "pending" });
+    // ── 5. Browser-redirect to React success page ─────────────────────────────
+    return res.redirect(
+      `${clientOrigin}/payment/success?verified=1&courseId=${tx.course_id}`,
+    );
   } catch (err) {
     next(err);
   }
@@ -482,6 +502,7 @@ async function checkTransactionStatus(req, res, next) {
 
 module.exports = {
   initiateTransaction,
+  handleCallback,
   checkTransactionStatus,
   verifyTransaction,
   getMyTransactions,

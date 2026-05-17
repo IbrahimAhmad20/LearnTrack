@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { body, param, query } = require("express-validator");
 const {
   initiateTransaction,
+  handleCallback,
   checkTransactionStatus,
   verifyTransaction,
   getMyTransactions,
@@ -11,6 +12,10 @@ const {
 } = require("../controllers/transactionController");
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
+
+// POST /api/v1/transactions/callback  — public, called by Safepay's servers
+// Must be BEFORE router.use(verifyToken) — Safepay has no JWT
+router.post("/callback", handleCallback);
 
 router.use(verifyToken);
 
