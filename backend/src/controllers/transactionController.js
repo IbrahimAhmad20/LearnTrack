@@ -244,10 +244,7 @@ async function getMyTransactions(req, res, next) {
     const { data, error } = await supabase
       .from("transactions")
       .select(
-        `
-        tx_id, amount, currency, status, gateway_reference, created_at,
-        courses ( course_id, title, thumbnail_url )
-      `,
+        "tx_id, course_id, amount, currency, status, created_at, courses(title)",
       )
       .eq("user_id", req.user.user_id)
       .order("created_at", { ascending: false });
@@ -285,16 +282,16 @@ async function getInstructorEarnings(req, res, next) {
       (courses || []).map((c) => [c.course_id, c.title]),
     );
 
-    const { data: transactions, error } = await supabase
+    const { data: txnRows, error } = await supabase
       .from("transactions")
-      .select("course_id, amount, currency, created_at")
+      .select("tx_id, course_id, amount, currency, created_at")
       .in("course_id", courseIds)
       .eq("status", "completed")
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
 
-    const txns = transactions || [];
+    const txns = txnRows || [];
     const byCourse = {};
     txns.forEach((t) => {
       if (!byCourse[t.course_id]) {
@@ -311,9 +308,12 @@ async function getInstructorEarnings(req, res, next) {
     });
 
     res.json({
-      total: txns.reduce((s, t) => s + Number(t.amount), 0),
+      total: Object.values(byCourse).reduce((s, c) => s + c.revenue, 0),
       by_course: Object.values(byCourse).sort((a, b) => b.revenue - a.revenue),
-      recent: txns.slice(0, 20),
+      recent: txns.slice(0, 20).map((t) => ({
+        ...t,
+        courses: { title: courseMap[t.course_id] || "—" },
+      })),
     });
   } catch (err) {
     next(err);
