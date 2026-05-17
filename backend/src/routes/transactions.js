@@ -16,13 +16,13 @@ const { verifyToken, requireRole } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
 
 // POST /api/v1/transactions/webhook  — PUBLIC, server-to-server from Safepay
-// Register in Safepay Dashboard → Developers → Webhooks
-// URL: https://learntrack-backend-33uq.onrender.com/api/v1/transactions/webhook
 router.post("/webhook", handleWebhook);
 
-// POST /api/v1/transactions/callback  — PUBLIC, browser redirect from Safepay
-// Safepay POSTs here after the user completes payment in the browser.
-// Must be BEFORE router.use(verifyToken).
+// GET  /api/v1/transactions/callback  — PUBLIC, browser redirect from Safepay
+// Safepay redirects the browser here with ?order_id=&tracker=&sig= in query params
+router.get("/callback", handleCallback);
+
+// POST /api/v1/transactions/callback  — PUBLIC, kept for fallback
 router.post("/callback", handleCallback);
 
 router.use(verifyToken);

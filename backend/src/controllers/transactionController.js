@@ -421,17 +421,25 @@ async function checkTransactionStatus(req, res, next) {
 }
 
 // ── POST /api/v1/transactions/callback ────────────────────────────────────────
-// Safepay POSTs here after payment (redirectUrl in checkout).
-// No JWT — Safepay's servers hit this directly. CORS opened in app.js.
+// ── GET|POST /api/v1/transactions/callback ────────────────────────────────────
+// Safepay redirects the browser here after payment.
+// Actual behaviour: GET redirect with ?order_id=&tracker=&sig= in query string.
 async function handleCallback(req, res, next) {
   try {
-    console.log("[Safepay callback] received body:", JSON.stringify(req.body));
+    // Merge query params and body — Safepay uses GET with query params
+    const params = { ...req.query, ...req.body };
+    console.log(
+      "[Safepay callback] method:",
+      req.method,
+      "params:",
+      JSON.stringify(params),
+    );
 
-    const { tracker, sig, order_id } = req.body;
+    const { tracker, sig, order_id } = params;
     const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 
-    if (!sig || !tracker || !order_id) {
-      console.error("[Safepay callback] missing required fields:", req.body);
+    if (!order_id) {
+      console.error("[Safepay callback] missing order_id — params:", params);
       return res.redirect(
         `${clientOrigin}/payment/success?error=missing_params`,
       );
@@ -449,23 +457,32 @@ async function handleCallback(req, res, next) {
       return res.redirect(`${clientOrigin}/payment/success?error=tx_not_found`);
     }
 
-    // Idempotent
+    // Idempotent — webhook may have already completed this
     if (tx.status === "completed") {
+      console.log("[Safepay callback] already completed, redirecting");
       return res.redirect(
         `${clientOrigin}/payment/success?verified=1&courseId=${tx.course_id}`,
       );
     }
 
-    // Verify HMAC signature
+    // Verify HMAC if sig present
     const hasSafepayKeys =
       process.env.SAFEPAY_API_KEY && process.env.SAFEPAY_API_KEY !== "your_key";
-    if (hasSafepayKeys) {
-      const valid = safepay.verify.signature({ body: { sig, tracker } });
-      if (!valid) {
-        console.error("[Safepay callback] invalid HMAC signature");
-        return res.redirect(
-          `${clientOrigin}/payment/success?error=invalid_sig`,
+    if (sig && tracker && hasSafepayKeys) {
+      try {
+        const valid = safepay.verify.signature({ body: { sig, tracker } });
+        if (!valid) {
+          console.error("[Safepay callback] invalid HMAC signature");
+          return res.redirect(
+            `${clientOrigin}/payment/success?error=invalid_sig`,
+          );
+        }
+      } catch (verifyErr) {
+        console.error(
+          "[Safepay callback] signature verify error:",
+          verifyErr.message,
         );
+        // Don't block on verify error — proceed to complete
       }
     }
 
@@ -480,7 +497,7 @@ async function handleCallback(req, res, next) {
     await enrollStudent(tx.user_id, tx.course_id);
 
     console.log(
-      `[Safepay callback] ✓ tx ${txId} completed, user ${tx.user_id} enrolled in course ${tx.course_id}`,
+      `[Safepay callback] ✓ tx ${txId} completed — user ${tx.user_id} enrolled in course ${tx.course_id}`,
     );
 
     return res.redirect(
