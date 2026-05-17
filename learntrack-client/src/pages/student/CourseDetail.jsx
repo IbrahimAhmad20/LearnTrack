@@ -7,6 +7,7 @@ import {
   activity as activityApi,
   sections as sectionsApi,
   reviews as reviewsApi,
+  transactions as transactionsApi,
 } from "../../api";
 import api from "../../api";
 import { ProgressBar, Spinner, Badge } from "../../components/ui";
@@ -247,6 +248,35 @@ export default function CourseDetail() {
   const progressPct = progress?.progress_pct || 0;
   const canReview = isEnrolled && progressPct >= 95;
 
+  // ── Payment ──────────────────────────────────────────────────────────────
+  const [buying, setBuying] = useState(false);
+  const effectivePrice = course
+    ? Number(course.discounted_price ?? course.price ?? 0)
+    : 0;
+  const isFree = effectivePrice === 0;
+
+  async function handleBuyOrEnroll() {
+    if (buying) return;
+    setBuying(true);
+    try {
+      const res = await transactionsApi.initiate(Number(id));
+      if (res.data.free) {
+        // Free course — already enrolled by backend
+        window.location.reload();
+      } else {
+        // Paid — open Safepay in new tab, go to polling page in this tab
+        window.open(res.data.checkout_url, "_blank");
+        window.location.href = `/payment/success?txId=${res.data.tx_id}`;
+      }
+    } catch (err) {
+      const msg =
+        err.response?.data?.error || "Something went wrong. Please try again.";
+      alert(msg);
+    } finally {
+      setBuying(false);
+    }
+  }
+
   const histogramTotal = reviewSummary
     ? Object.values(reviewSummary.distribution || {}).reduce((s, v) => s + v, 0)
     : 0;
@@ -306,6 +336,58 @@ export default function CourseDetail() {
           </p>
         )}
       </div>
+
+      {/* Price / Enroll / Buy card */}
+      {!isEnrolled && (
+        <div className="card p-4 mb-6 flex items-center justify-between gap-4">
+          <div>
+            {isFree ? (
+              <span
+                className="text-sm font-medium"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Free
+              </span>
+            ) : (
+              <div className="flex items-center gap-2">
+                {course.discounted_price &&
+                  course.discounted_price < course.price && (
+                    <span
+                      className="text-xs line-through"
+                      style={{
+                        color: "var(--text-muted)",
+                        fontFamily: "DM Mono, monospace",
+                      }}
+                    >
+                      PKR {Number(course.price).toLocaleString()}
+                    </span>
+                  )}
+                <span
+                  className="text-lg font-semibold"
+                  style={{
+                    color: "var(--accent-text)",
+                    fontFamily: "DM Mono, monospace",
+                  }}
+                >
+                  PKR {effectivePrice.toLocaleString()}
+                </span>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleBuyOrEnroll}
+            disabled={buying}
+            className="btn-primary"
+            style={{ minWidth: 140, opacity: buying ? 0.7 : 1 }}
+          >
+            {buying
+              ? "Please wait…"
+              : isFree
+                ? "Enroll for free"
+                : `Buy — PKR ${effectivePrice.toLocaleString()}`}
+          </button>
+        </div>
+      )}
 
       {progress !== null && (
         <div className="card p-4 mb-6">

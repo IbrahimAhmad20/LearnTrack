@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   courses as coursesApi,
   enrollments as enrollmentsApi,
+  transactions as transactionsApi,
 } from "../../api";
 import { Spinner, EmptyState, SkeletonCard } from "../../components/ui";
 import { CourseCard, useToast } from "../../components";
@@ -31,14 +32,24 @@ export default function CourseList() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleEnroll = async (courseId) => {
+  const handleBuyOrEnroll = async (course) => {
+    const courseId = course.course_id;
     setEnrolling(courseId);
     try {
-      await enrollmentsApi.enroll(courseId);
-      setEnrolled((prev) => new Set([...prev, courseId]));
-      navigate(`/student/courses/${courseId}`);
-    } catch {
-      showToast("Could not enroll right now", "error");
+      const res = await transactionsApi.initiate(courseId);
+      if (res.data.free) {
+        // Free course — already enrolled by backend
+        setEnrolled((prev) => new Set([...prev, courseId]));
+        navigate(`/student/courses/${courseId}`);
+      } else {
+        // Paid — open Safepay in new tab, go to polling page in this tab
+        window.open(res.data.checkout_url, "_blank");
+        window.location.href = `/payment/success?txId=${res.data.tx_id}`;
+      }
+    } catch (err) {
+      const msg =
+        err.response?.data?.error || "Could not process. Please try again.";
+      showToast(msg, "error");
       setEnrolling(null);
     }
   };
@@ -122,7 +133,7 @@ export default function CourseList() {
                     </button>
                   ) : (
                     <button
-                      onClick={() => handleEnroll(course.course_id)}
+                      onClick={() => handleBuyOrEnroll(course)}
                       disabled={enrolling === course.course_id}
                       className="btn-primary w-full justify-center text-xs py-1.5"
                       style={{
@@ -131,8 +142,10 @@ export default function CourseList() {
                     >
                       {enrolling === course.course_id ? (
                         <Spinner size={13} />
+                      ) : Number(course.price) > 0 ? (
+                        `Buy — PKR ${Number(course.discounted_price ?? course.price).toLocaleString()}`
                       ) : (
-                        "Enroll"
+                        "Enroll free"
                       )}
                     </button>
                   )

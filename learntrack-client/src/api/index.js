@@ -82,6 +82,15 @@ export const enrollments = {
   },
   enroll: (courseId) => api.post(`/enrollments/${courseId}`),
   progress: async (courseId) => {
+    // First check if actually enrolled — if not, return null so isEnrolled = false
+    const enrollRes = await api.get("/enrollments/my");
+    const enrollment = (enrollRes.data || []).find(
+      (e) => e.courses?.course_id === Number(courseId),
+    );
+    if (!enrollment) {
+      return { data: null };
+    }
+    // Enrolled — compute progress pct from content progress
     const res = await api.get("/progress/me");
     const courseItems = (res.data || []).filter(
       (item) => item.content?.course_id === Number(courseId),
@@ -138,7 +147,11 @@ export const admin = {
 // ── CF1: Transactions ───────────────────────────────────────────────────────
 export const transactions = {
   mine: () => api.get("/transactions/my"),
-  create: (data) => api.post("/transactions", data),
+  initiate: (courseId) =>
+    api.post("/transactions/initiate", { course_id: courseId }),
+  verify: ({ orderId, sig, tracker }) =>
+    api.post("/transactions/verify", { orderId, sig, tracker }),
+  status: (txId) => api.get(`/transactions/${txId}/status`),
   earnings: () => api.get("/transactions/instructor/earnings"),
   all: (params) => api.get("/transactions", { params }),
   refund: (id) => api.post(`/transactions/${id}/refund`),
@@ -187,17 +200,3 @@ export const notifications = {
 export const categories = {
   list: () => api.get("/courses/categories"),
 };
-
-// export { default as Navbar } from "./Navbar";
-// export { default as CourseCard } from "./CourseCard";
-// export { default as ContentPlayer } from "./ContentPlayer";
-// export { default as QuizRunner } from "./QuizRunner";
-// export { default as AnalyticsChart } from "./AnalyticsChart";
-// export { default as DataTable } from "./DataTable";
-// export { default as Heatmap } from "./Heatmap";
-// export { ToastProvider, useToast } from "./Toast";
-// export { default as ConfirmDialog } from "./ConfirmDialog";
-// export { default as StarRating } from "./StarRating";
-// export { default as ReviewModal } from "./ReviewModal";
-// export { default as SectionAccordion } from "./SectionAccordion";
-// export { default as NotificationBell } from "./NotificationBell";

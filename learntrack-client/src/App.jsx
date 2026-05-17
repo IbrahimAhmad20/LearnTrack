@@ -31,6 +31,8 @@ import AdminCourses from "./pages/admin/Courses";
 import AdminAnalytics from "./pages/admin/Analytics";
 
 import CertificateVerify from "./pages/CertificateVerify";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import PaymentCancel from "./pages/PaymentCancel";
 
 export default function App() {
   return (
@@ -43,6 +45,8 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/verify/:hash" element={<CertificateVerify />} />
+            <Route path="/payment/success" element={<PaymentSuccess />} />
+            <Route path="/payment/cancel" element={<PaymentCancel />} />
 
             {/* Instructor */}
             <Route

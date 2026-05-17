@@ -66,6 +66,8 @@ export default function EditCourse() {
     title: "",
     description: "",
     category: "",
+    price: "",
+    discounted_price: "",
     is_published: false,
   });
   const [loading, setLoading] = useState(true);
@@ -130,6 +132,11 @@ export default function EditCourse() {
           title: r.data.title || "",
           description: r.data.description || "",
           category: r.data.category || "",
+          price: r.data.price != null ? String(r.data.price) : "",
+          discounted_price:
+            r.data.discounted_price != null
+              ? String(r.data.discounted_price)
+              : "",
           is_published: r.data.is_published || false,
         });
       })
@@ -177,7 +184,7 @@ export default function EditCourse() {
     const sort =
       contentForm.sort_order !== "" && contentForm.sort_order != null
         ? Number(contentForm.sort_order)
-        : course?.content?.length ?? 0;
+        : (course?.content?.length ?? 0);
 
     const payload = {
       title: contentForm.title.trim(),
@@ -224,7 +231,10 @@ export default function EditCourse() {
       if (editContent?.content_id === contentId) setEditContent(null);
       await reloadCourse();
     } catch (err) {
-      showToast(err.response?.data?.error || "Could not remove content", "error");
+      showToast(
+        err.response?.data?.error || "Could not remove content",
+        "error",
+      );
     } finally {
       setAddingContent(null);
     }
@@ -241,8 +251,7 @@ export default function EditCourse() {
         item.duration_sec != null && item.duration_sec !== ""
           ? String(item.duration_sec)
           : "",
-      sort_order:
-        item.sort_order != null ? String(item.sort_order) : "0",
+      sort_order: item.sort_order != null ? String(item.sort_order) : "0",
       is_published: Boolean(item.is_published),
     });
   };
@@ -276,7 +285,10 @@ export default function EditCourse() {
       setEditContent(null);
       await reloadCourse();
     } catch (err) {
-      showToast(err.response?.data?.error || "Could not update content", "error");
+      showToast(
+        err.response?.data?.error || "Could not update content",
+        "error",
+      );
     } finally {
       setSavingEditContent(false);
     }
@@ -414,7 +426,8 @@ export default function EditCourse() {
     setQuestionForm((f) => {
       if (f.options.length <= 2) return f;
       const opts = f.options.filter((_, i) => i !== idx);
-      if (!opts.some((o) => o.is_correct)) opts[0] = { ...opts[0], is_correct: true };
+      if (!opts.some((o) => o.is_correct))
+        opts[0] = { ...opts[0], is_correct: true };
       return { ...f, options: opts };
     });
   };
@@ -603,6 +616,33 @@ export default function EditCourse() {
               style={{ resize: "none" }}
             />
           </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="label">Price (PKR)</label>
+              <input
+                type="number"
+                className="input-field"
+                value={form.price}
+                onChange={set("price")}
+                placeholder="0 for free"
+                min="0"
+                step="1"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="label">Discounted price (PKR)</label>
+              <input
+                type="number"
+                className="input-field"
+                value={form.discounted_price}
+                onChange={set("discounted_price")}
+                placeholder="Leave blank if no discount"
+                min="0"
+                step="1"
+              />
+            </div>
+          </div>
+
           <label className="flex items-center gap-2.5 cursor-pointer">
             <input
               type="checkbox"
@@ -661,8 +701,8 @@ export default function EditCourse() {
           Course content
         </h2>
         <p className="text-xs mb-5" style={{ color: "var(--text-muted)" }}>
-          Add lessons students see in the course outline (videos, readings, etc.).
-          Publish each item when it is ready.
+          Add lessons students see in the course outline (videos, readings,
+          etc.). Publish each item when it is ready.
         </p>
 
         <form onSubmit={submitContent} className="flex flex-col gap-3 mb-6">
@@ -696,7 +736,9 @@ export default function EditCourse() {
             </select>
           </div>
           <div>
-            <label className="label">Resource URL (YouTube or direct video link)</label>
+            <label className="label">
+              Resource URL (YouTube or direct video link)
+            </label>
             <input
               type="url"
               className="input-field"
@@ -722,7 +764,9 @@ export default function EditCourse() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label text-xs">Duration (seconds, optional)</label>
+              <label className="label text-xs">
+                Duration (seconds, optional)
+              </label>
               <input
                 type="number"
                 min={1}
@@ -765,7 +809,10 @@ export default function EditCourse() {
               }
               style={{ accentColor: "var(--accent)" }}
             />
-            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+            <span
+              className="text-sm"
+              style={{ color: "var(--text-secondary)" }}
+            >
               Published (visible in course with a published course)
             </span>
           </label>
@@ -829,9 +876,7 @@ export default function EditCourse() {
                         value={editContent.content_type}
                         onChange={(e) =>
                           setEditContent((f) =>
-                            f
-                              ? { ...f, content_type: e.target.value }
-                              : f,
+                            f ? { ...f, content_type: e.target.value } : f,
                           )
                         }
                       >
@@ -871,9 +916,7 @@ export default function EditCourse() {
                           value={editContent.duration_sec}
                           onChange={(e) =>
                             setEditContent((f) =>
-                              f
-                                ? { ...f, duration_sec: e.target.value }
-                                : f,
+                              f ? { ...f, duration_sec: e.target.value } : f,
                             )
                           }
                         />
@@ -885,9 +928,7 @@ export default function EditCourse() {
                           value={editContent.sort_order}
                           onChange={(e) =>
                             setEditContent((f) =>
-                              f
-                                ? { ...f, sort_order: e.target.value }
-                                : f,
+                              f ? { ...f, sort_order: e.target.value } : f,
                             )
                           }
                         />
@@ -921,11 +962,7 @@ export default function EditCourse() {
                           className="btn-primary text-sm"
                           disabled={contentLocked}
                         >
-                          {savingEditContent ? (
-                            <Spinner size={14} />
-                          ) : (
-                            "Save"
-                          )}
+                          {savingEditContent ? <Spinner size={14} /> : "Save"}
                         </button>
                         <button
                           type="button"
@@ -1014,9 +1051,12 @@ export default function EditCourse() {
         >
           <div>
             <h2 className="text-sm font-medium">Quizzes</h2>
-            <p className="text-xs mt-1 font-normal" style={{ color: "var(--text-muted)" }}>
-              Optional — skip this if your course does not need tests. ({quizzes.length}{" "}
-              {quizzes.length === 1 ? "quiz" : "quizzes"})
+            <p
+              className="text-xs mt-1 font-normal"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Optional — skip this if your course does not need tests. (
+              {quizzes.length} {quizzes.length === 1 ? "quiz" : "quizzes"})
             </p>
           </div>
           <span className="text-lg" style={{ color: "var(--text-muted)" }}>
@@ -1026,467 +1066,505 @@ export default function EditCourse() {
 
         {quizSectionOpen && (
           <>
-        <p
-          className="text-xs mb-5"
-          style={{ color: "var(--text-muted)" }}
-        >
-          When you add quizzes, students only see those marked{" "}
-          <span style={{ color: "var(--text-secondary)" }}>live</span>.
-        </p>
+            <p className="text-xs mb-5" style={{ color: "var(--text-muted)" }}>
+              When you add quizzes, students only see those marked{" "}
+              <span style={{ color: "var(--text-secondary)" }}>live</span>.
+            </p>
 
-        <form
-          onSubmit={createQuiz}
-          className="flex flex-col gap-3 mb-6 pb-6"
-          style={{ borderBottom: "1px solid var(--border)" }}
-        >
-          <p
-            className="text-xs font-medium uppercase tracking-wide"
-            style={{ color: "var(--text-muted)" }}
-          >
-            New quiz
-          </p>
-          <input
-            type="text"
-            className="input-field"
-            placeholder="Quiz title"
-            value={newQuiz.title}
-            onChange={(e) =>
-              setNewQuiz((q) => ({ ...q, title: e.target.value }))
-            }
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label text-xs">Pass score (%)</label>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                className="input-field"
-                value={newQuiz.pass_score}
-                onChange={(e) =>
-                  setNewQuiz((q) => ({ ...q, pass_score: e.target.value }))
-                }
-              />
-            </div>
-            <div>
-              <label className="label text-xs">Time limit (min, optional)</label>
-              <input
-                type="number"
-                min={1}
-                className="input-field"
-                placeholder="—"
-                value={newQuiz.time_limit_min}
-                onChange={(e) =>
-                  setNewQuiz((q) => ({ ...q, time_limit_min: e.target.value }))
-                }
-              />
-            </div>
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={newQuiz.allow_multiple}
-              onChange={(e) =>
-                setNewQuiz((q) => ({ ...q, allow_multiple: e.target.checked }))
-              }
-              style={{ accentColor: "var(--accent)" }}
-            />
-            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-              Allow multiple attempts
-            </span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={newQuiz.is_published}
-              onChange={(e) =>
-                setNewQuiz((q) => ({ ...q, is_published: e.target.checked }))
-              }
-              style={{ accentColor: "var(--accent)" }}
-            />
-            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-              Visible to students
-            </span>
-          </label>
-          <button
-            type="submit"
-            className="btn-primary text-sm self-start"
-            disabled={creatingQuiz}
-          >
-            {creatingQuiz ? <Spinner size={14} /> : "Create quiz"}
-          </button>
-        </form>
-
-        {quizzes.length === 0 ? (
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            No quizzes yet.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {quizzes.map((q) => (
-              <li
-                key={q.quiz_id}
-                className="rounded-lg border overflow-hidden"
-                style={{ borderColor: "var(--border)" }}
+            <form
+              onSubmit={createQuiz}
+              className="flex flex-col gap-3 mb-6 pb-6"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
+              <p
+                className="text-xs font-medium uppercase tracking-wide"
+                style={{ color: "var(--text-muted)" }}
               >
-                <div
-                  className="flex items-center justify-between gap-2 px-4 py-3"
-                  style={{ background: "var(--bg-secondary)" }}
-                >
-                  <div>
-                    <p
-                      className="text-sm font-medium"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      {q.title}
-                    </p>
-                    <p
-                      className="text-xs mt-0.5"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      Pass {q.pass_score}% ·{" "}
-                      {q.allow_multiple ? "retakes allowed" : "single attempt"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge type={q.is_published ? "published" : "draft"}>
-                      {q.is_published ? "live" : "draft"}
-                    </Badge>
-                    <button
-                      type="button"
-                      className="btn-ghost text-xs py-1 px-2"
-                      onClick={() =>
-                        togglePublishQuiz(q.quiz_id, !q.is_published)
-                      }
-                    >
-                      {q.is_published ? "Unpublish" : "Publish"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-primary text-xs py-1 px-2"
-                      onClick={() => openQuizBuilder(q.quiz_id)}
-                    >
-                      {expandedQuizId === q.quiz_id ? "Close" : "Questions"}
-                    </button>
-                  </div>
+                New quiz
+              </p>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Quiz title"
+                value={newQuiz.title}
+                onChange={(e) =>
+                  setNewQuiz((q) => ({ ...q, title: e.target.value }))
+                }
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label text-xs">Pass score (%)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    className="input-field"
+                    value={newQuiz.pass_score}
+                    onChange={(e) =>
+                      setNewQuiz((q) => ({ ...q, pass_score: e.target.value }))
+                    }
+                  />
                 </div>
+                <div>
+                  <label className="label text-xs">
+                    Time limit (min, optional)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    className="input-field"
+                    placeholder="—"
+                    value={newQuiz.time_limit_min}
+                    onChange={(e) =>
+                      setNewQuiz((q) => ({
+                        ...q,
+                        time_limit_min: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newQuiz.allow_multiple}
+                  onChange={(e) =>
+                    setNewQuiz((q) => ({
+                      ...q,
+                      allow_multiple: e.target.checked,
+                    }))
+                  }
+                  style={{ accentColor: "var(--accent)" }}
+                />
+                <span
+                  className="text-sm"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Allow multiple attempts
+                </span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newQuiz.is_published}
+                  onChange={(e) =>
+                    setNewQuiz((q) => ({
+                      ...q,
+                      is_published: e.target.checked,
+                    }))
+                  }
+                  style={{ accentColor: "var(--accent)" }}
+                />
+                <span
+                  className="text-sm"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Visible to students
+                </span>
+              </label>
+              <button
+                type="submit"
+                className="btn-primary text-sm self-start"
+                disabled={creatingQuiz}
+              >
+                {creatingQuiz ? <Spinner size={14} /> : "Create quiz"}
+              </button>
+            </form>
 
-                {expandedQuizId === q.quiz_id && (
-                  <div className="p-4 border-t" style={{ borderColor: "var(--border)" }}>
-                    {quizDetailLoading ? (
-                      <div className="flex justify-center py-6">
-                        <Spinner />
-                      </div>
-                    ) : quizDetail ? (
-                      <>
+            {quizzes.length === 0 ? (
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                No quizzes yet.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {quizzes.map((q) => (
+                  <li
+                    key={q.quiz_id}
+                    className="rounded-lg border overflow-hidden"
+                    style={{ borderColor: "var(--border)" }}
+                  >
+                    <div
+                      className="flex items-center justify-between gap-2 px-4 py-3"
+                      style={{ background: "var(--bg-secondary)" }}
+                    >
+                      <div>
                         <p
-                          className="text-xs mb-4 rounded px-3 py-2"
-                          style={{
-                            background: "var(--bg-hover)",
-                            color: "var(--text-secondary)",
-                            border: "1px solid var(--border)",
-                          }}
+                          className="text-sm font-medium"
+                          style={{ color: "var(--text-primary)" }}
                         >
-                          Add <strong>multiple choice</strong> or{" "}
-                          <strong>true/false</strong> using the form below, or{" "}
-                          <strong>import many at once</strong> from a JSON file.
-                          Download a sample:{" "}
-                          <a
-                            href="/quiz-import-template.json"
-                            download="quiz-import-template.json"
-                            className="underline"
-                            style={{ color: "var(--accent)" }}
-                          >
-                            quiz-import-template.json
-                          </a>
-                          .
+                          {q.title}
                         </p>
                         <p
-                          className="text-xs font-medium uppercase tracking-wide mb-3"
+                          className="text-xs mt-0.5"
                           style={{ color: "var(--text-muted)" }}
                         >
-                          Existing questions ({quizDetail.questions?.length || 0})
+                          Pass {q.pass_score}% ·{" "}
+                          {q.allow_multiple
+                            ? "retakes allowed"
+                            : "single attempt"}
                         </p>
-                        <ul className="flex flex-col gap-3 mb-6">
-                          {(quizDetail.questions || []).map((qq, idx) => (
-                            <li
-                              key={qq.question_id}
-                              className="text-sm rounded p-3"
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Badge type={q.is_published ? "published" : "draft"}>
+                          {q.is_published ? "live" : "draft"}
+                        </Badge>
+                        <button
+                          type="button"
+                          className="btn-ghost text-xs py-1 px-2"
+                          onClick={() =>
+                            togglePublishQuiz(q.quiz_id, !q.is_published)
+                          }
+                        >
+                          {q.is_published ? "Unpublish" : "Publish"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-primary text-xs py-1 px-2"
+                          onClick={() => openQuizBuilder(q.quiz_id)}
+                        >
+                          {expandedQuizId === q.quiz_id ? "Close" : "Questions"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {expandedQuizId === q.quiz_id && (
+                      <div
+                        className="p-4 border-t"
+                        style={{ borderColor: "var(--border)" }}
+                      >
+                        {quizDetailLoading ? (
+                          <div className="flex justify-center py-6">
+                            <Spinner />
+                          </div>
+                        ) : quizDetail ? (
+                          <>
+                            <p
+                              className="text-xs mb-4 rounded px-3 py-2"
                               style={{
                                 background: "var(--bg-hover)",
+                                color: "var(--text-secondary)",
                                 border: "1px solid var(--border)",
                               }}
                             >
-                              <span
-                                className="text-xs font-mono mr-2"
-                                style={{ color: "var(--text-muted)" }}
+                              Add <strong>multiple choice</strong> or{" "}
+                              <strong>true/false</strong> using the form below,
+                              or <strong>import many at once</strong> from a
+                              JSON file. Download a sample:{" "}
+                              <a
+                                href="/quiz-import-template.json"
+                                download="quiz-import-template.json"
+                                className="underline"
+                                style={{ color: "var(--accent)" }}
                               >
-                                {idx + 1}.
-                              </span>
-                              <span style={{ color: "var(--text-primary)" }}>
-                                {qq.question_text}
-                              </span>
-                              <span
-                                className="block text-xs mt-2"
-                                style={{ color: "var(--text-muted)" }}
-                              >
-                                {(qq.question_types?.type_name || "mcq").replace(
-                                  "_",
-                                  " ",
-                                )}{" "}
-                                · {qq.points} pt
-                              </span>
-                              <ul className="mt-2 ml-4 list-disc space-y-1">
-                                {(qq.question_options || []).map((opt) => (
-                                  <li
-                                    key={opt.option_id}
-                                    style={{
-                                      color: opt.is_correct
-                                        ? "var(--accent)"
-                                        : "var(--text-secondary)",
-                                    }}
-                                  >
-                                    {opt.option_text}
-                                    {opt.is_correct ? " ✓" : ""}
-                                  </li>
-                                ))}
-                              </ul>
-                            </li>
-                          ))}
-                        </ul>
-
-                        <form
-                          onSubmit={submitQuestion}
-                          className="flex flex-col gap-3"
-                        >
-                          <p
-                            className="text-xs font-medium uppercase tracking-wide"
-                            style={{ color: "var(--text-muted)" }}
-                          >
-                            Add question
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              className={`btn-ghost text-xs py-1 px-2 ${questionForm.question_type === "mcq" ? "ring-1 ring-[var(--accent)]" : ""}`}
-                              onClick={() => setQuestionType("mcq")}
+                                quiz-import-template.json
+                              </a>
+                              .
+                            </p>
+                            <p
+                              className="text-xs font-medium uppercase tracking-wide mb-3"
+                              style={{ color: "var(--text-muted)" }}
                             >
-                              Multiple choice
-                            </button>
-                            <button
-                              type="button"
-                              className={`btn-ghost text-xs py-1 px-2 ${questionForm.question_type === "true_false" ? "ring-1 ring-[var(--accent)]" : ""}`}
-                              onClick={() => setQuestionType("true_false")}
-                            >
-                              True / false
-                            </button>
-                          </div>
-                          <textarea
-                            className="input-field text-sm"
-                            rows={2}
-                            placeholder="Question"
-                            value={questionForm.question_text}
-                            onChange={(e) =>
-                              setQuestionForm((f) => ({
-                                ...f,
-                                question_text: e.target.value,
-                              }))
-                            }
-                          />
-                          <div>
-                            <label className="label text-xs">Points</label>
-                            <input
-                              type="number"
-                              min={0.25}
-                              step={0.25}
-                              className="input-field max-w-[120px]"
-                              value={questionForm.points}
-                              onChange={(e) =>
-                                setQuestionForm((f) => ({
-                                  ...f,
-                                  points: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-
-                          {questionForm.question_type === "mcq" ? (
-                            <div className="flex flex-col gap-2">
-                              {questionForm.options.map((opt, idx) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-start gap-2"
+                              Existing questions (
+                              {quizDetail.questions?.length || 0})
+                            </p>
+                            <ul className="flex flex-col gap-3 mb-6">
+                              {(quizDetail.questions || []).map((qq, idx) => (
+                                <li
+                                  key={qq.question_id}
+                                  className="text-sm rounded p-3"
+                                  style={{
+                                    background: "var(--bg-hover)",
+                                    border: "1px solid var(--border)",
+                                  }}
                                 >
-                                  <label className="flex items-center gap-1.5 shrink-0 mt-2 cursor-pointer">
-                                    <input
-                                      type="radio"
-                                      name="mcq-correct"
-                                      checked={opt.is_correct}
-                                      onChange={() =>
-                                        updateMcqOption(idx, "is_correct", true)
-                                      }
-                                    />
-                                    <span
-                                      className="text-xs"
-                                      style={{ color: "var(--text-muted)" }}
+                                  <span
+                                    className="text-xs font-mono mr-2"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    {idx + 1}.
+                                  </span>
+                                  <span
+                                    style={{ color: "var(--text-primary)" }}
+                                  >
+                                    {qq.question_text}
+                                  </span>
+                                  <span
+                                    className="block text-xs mt-2"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    {(
+                                      qq.question_types?.type_name || "mcq"
+                                    ).replace("_", " ")}{" "}
+                                    · {qq.points} pt
+                                  </span>
+                                  <ul className="mt-2 ml-4 list-disc space-y-1">
+                                    {(qq.question_options || []).map((opt) => (
+                                      <li
+                                        key={opt.option_id}
+                                        style={{
+                                          color: opt.is_correct
+                                            ? "var(--accent)"
+                                            : "var(--text-secondary)",
+                                        }}
+                                      >
+                                        {opt.option_text}
+                                        {opt.is_correct ? " ✓" : ""}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </li>
+                              ))}
+                            </ul>
+
+                            <form
+                              onSubmit={submitQuestion}
+                              className="flex flex-col gap-3"
+                            >
+                              <p
+                                className="text-xs font-medium uppercase tracking-wide"
+                                style={{ color: "var(--text-muted)" }}
+                              >
+                                Add question
+                              </p>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  className={`btn-ghost text-xs py-1 px-2 ${questionForm.question_type === "mcq" ? "ring-1 ring-[var(--accent)]" : ""}`}
+                                  onClick={() => setQuestionType("mcq")}
+                                >
+                                  Multiple choice
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`btn-ghost text-xs py-1 px-2 ${questionForm.question_type === "true_false" ? "ring-1 ring-[var(--accent)]" : ""}`}
+                                  onClick={() => setQuestionType("true_false")}
+                                >
+                                  True / false
+                                </button>
+                              </div>
+                              <textarea
+                                className="input-field text-sm"
+                                rows={2}
+                                placeholder="Question"
+                                value={questionForm.question_text}
+                                onChange={(e) =>
+                                  setQuestionForm((f) => ({
+                                    ...f,
+                                    question_text: e.target.value,
+                                  }))
+                                }
+                              />
+                              <div>
+                                <label className="label text-xs">Points</label>
+                                <input
+                                  type="number"
+                                  min={0.25}
+                                  step={0.25}
+                                  className="input-field max-w-[120px]"
+                                  value={questionForm.points}
+                                  onChange={(e) =>
+                                    setQuestionForm((f) => ({
+                                      ...f,
+                                      points: e.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+
+                              {questionForm.question_type === "mcq" ? (
+                                <div className="flex flex-col gap-2">
+                                  {questionForm.options.map((opt, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="flex items-start gap-2"
                                     >
-                                      Correct
-                                    </span>
-                                  </label>
-                                  <input
-                                    type="text"
-                                    className="input-field flex-1 text-sm"
-                                    placeholder={`Option ${idx + 1}`}
-                                    value={opt.option_text}
+                                      <label className="flex items-center gap-1.5 shrink-0 mt-2 cursor-pointer">
+                                        <input
+                                          type="radio"
+                                          name="mcq-correct"
+                                          checked={opt.is_correct}
+                                          onChange={() =>
+                                            updateMcqOption(
+                                              idx,
+                                              "is_correct",
+                                              true,
+                                            )
+                                          }
+                                        />
+                                        <span
+                                          className="text-xs"
+                                          style={{ color: "var(--text-muted)" }}
+                                        >
+                                          Correct
+                                        </span>
+                                      </label>
+                                      <input
+                                        type="text"
+                                        className="input-field flex-1 text-sm"
+                                        placeholder={`Option ${idx + 1}`}
+                                        value={opt.option_text}
+                                        onChange={(e) =>
+                                          updateMcqOption(
+                                            idx,
+                                            "option_text",
+                                            e.target.value,
+                                          )
+                                        }
+                                      />
+                                      <button
+                                        type="button"
+                                        className="btn-ghost text-xs px-2 mt-1 shrink-0"
+                                        onClick={() => removeMcqOption(idx)}
+                                        disabled={
+                                          questionForm.options.length <= 2
+                                        }
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    className="btn-ghost text-xs self-start"
+                                    onClick={addMcqOption}
+                                  >
+                                    + Add option
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col gap-2">
+                                  {questionForm.options.map((opt, idx) => (
+                                    <label
+                                      key={idx}
+                                      className="flex items-center gap-2 cursor-pointer text-sm"
+                                      style={{ color: "var(--text-primary)" }}
+                                    >
+                                      <input
+                                        type="radio"
+                                        name="tf-correct"
+                                        checked={opt.is_correct}
+                                        onChange={() =>
+                                          setQuestionForm((f) => {
+                                            const opts = f.options.map(
+                                              (o, i) => ({
+                                                ...o,
+                                                is_correct: i === idx,
+                                              }),
+                                            );
+                                            return { ...f, options: opts };
+                                          })
+                                        }
+                                      />
+                                      {opt.option_text}
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
+
+                              <button
+                                type="submit"
+                                className="btn-primary text-sm self-start"
+                                disabled={addingQuestion}
+                              >
+                                {addingQuestion ? (
+                                  <Spinner size={14} />
+                                ) : (
+                                  "Add to quiz"
+                                )}
+                              </button>
+                            </form>
+
+                            <div
+                              className="mt-6 pt-6"
+                              style={{ borderTop: "1px solid var(--border)" }}
+                            >
+                              <button
+                                type="button"
+                                className="w-full flex items-center justify-between gap-2 text-left mb-3"
+                                onClick={() => setQuizImportOpen((v) => !v)}
+                                style={{ color: "var(--text-primary)" }}
+                                aria-expanded={quizImportOpen}
+                              >
+                                <span
+                                  className="text-xs font-medium uppercase tracking-wide"
+                                  style={{ color: "var(--text-muted)" }}
+                                >
+                                  Import questions (JSON)
+                                </span>
+                                <span
+                                  className="text-lg"
+                                  style={{ color: "var(--text-muted)" }}
+                                >
+                                  {quizImportOpen ? "−" : "+"}
+                                </span>
+                              </button>
+                              {quizImportOpen && (
+                                <div className="flex flex-col gap-3">
+                                  <p
+                                    className="text-xs"
+                                    style={{ color: "var(--text-muted)" }}
+                                  >
+                                    Paste an array of questions, or use{" "}
+                                    <code className="text-[11px]">{`{ "questions": [ ... ] }`}</code>
+                                    . Each needs{" "}
+                                    <code className="text-[11px]">
+                                      question_type
+                                    </code>
+                                    ,{" "}
+                                    <code className="text-[11px]">
+                                      question_text
+                                    </code>
+                                    ,{" "}
+                                    <code className="text-[11px]">options</code>{" "}
+                                    (min 2; one{" "}
+                                    <code className="text-[11px]">
+                                      is_correct: true
+                                    </code>
+                                    ).
+                                  </p>
+                                  <div className="flex flex-wrap gap-2 items-center">
+                                    <label className="btn-ghost text-xs cursor-pointer py-1.5 px-3">
+                                      Choose .json file
+                                      <input
+                                        type="file"
+                                        accept=".json,application/json"
+                                        className="hidden"
+                                        onChange={onQuizImportFile}
+                                      />
+                                    </label>
+                                  </div>
+                                  <textarea
+                                    className="input-field text-xs font-mono"
+                                    rows={10}
+                                    placeholder='[ { "question_type": "mcq", "question_text": "...", "points": 1, "options": [ ... ] } ]'
+                                    value={quizImportText}
                                     onChange={(e) =>
-                                      updateMcqOption(
-                                        idx,
-                                        "option_text",
-                                        e.target.value,
-                                      )
+                                      setQuizImportText(e.target.value)
                                     }
                                   />
                                   <button
                                     type="button"
-                                    className="btn-ghost text-xs px-2 mt-1 shrink-0"
-                                    onClick={() => removeMcqOption(idx)}
-                                    disabled={questionForm.options.length <= 2}
+                                    className="btn-primary text-sm self-start"
+                                    disabled={importingQuizBatch}
+                                    onClick={runQuizImport}
                                   >
-                                    ✕
+                                    {importingQuizBatch ? (
+                                      <Spinner size={14} />
+                                    ) : (
+                                      "Import into this quiz"
+                                    )}
                                   </button>
                                 </div>
-                              ))}
-                              <button
-                                type="button"
-                                className="btn-ghost text-xs self-start"
-                                onClick={addMcqOption}
-                              >
-                                + Add option
-                              </button>
+                              )}
                             </div>
-                          ) : (
-                            <div className="flex flex-col gap-2">
-                              {questionForm.options.map((opt, idx) => (
-                                <label
-                                  key={idx}
-                                  className="flex items-center gap-2 cursor-pointer text-sm"
-                                  style={{ color: "var(--text-primary)" }}
-                                >
-                                  <input
-                                    type="radio"
-                                    name="tf-correct"
-                                    checked={opt.is_correct}
-                                    onChange={() =>
-                                      setQuestionForm((f) => {
-                                        const opts = f.options.map((o, i) => ({
-                                          ...o,
-                                          is_correct: i === idx,
-                                        }));
-                                        return { ...f, options: opts };
-                                      })
-                                    }
-                                  />
-                                  {opt.option_text}
-                                </label>
-                              ))}
-                            </div>
-                          )}
-
-                          <button
-                            type="submit"
-                            className="btn-primary text-sm self-start"
-                            disabled={addingQuestion}
-                          >
-                            {addingQuestion ? (
-                              <Spinner size={14} />
-                            ) : (
-                              "Add to quiz"
-                            )}
-                          </button>
-                        </form>
-
-                        <div
-                          className="mt-6 pt-6"
-                          style={{ borderTop: "1px solid var(--border)" }}
-                        >
-                          <button
-                            type="button"
-                            className="w-full flex items-center justify-between gap-2 text-left mb-3"
-                            onClick={() => setQuizImportOpen((v) => !v)}
-                            style={{ color: "var(--text-primary)" }}
-                            aria-expanded={quizImportOpen}
-                          >
-                            <span
-                              className="text-xs font-medium uppercase tracking-wide"
-                              style={{ color: "var(--text-muted)" }}
-                            >
-                              Import questions (JSON)
-                            </span>
-                            <span
-                              className="text-lg"
-                              style={{ color: "var(--text-muted)" }}
-                            >
-                              {quizImportOpen ? "−" : "+"}
-                            </span>
-                          </button>
-                          {quizImportOpen && (
-                            <div className="flex flex-col gap-3">
-                              <p
-                                className="text-xs"
-                                style={{ color: "var(--text-muted)" }}
-                              >
-                                Paste an array of questions, or use{" "}
-                                <code className="text-[11px]">{`{ "questions": [ ... ] }`}</code>.
-                                Each needs{" "}
-                                <code className="text-[11px]">question_type</code>,{" "}
-                                <code className="text-[11px]">question_text</code>,{" "}
-                                <code className="text-[11px]">options</code> (min 2;
-                                one <code className="text-[11px]">is_correct: true</code>
-                                ).
-                              </p>
-                              <div className="flex flex-wrap gap-2 items-center">
-                                <label className="btn-ghost text-xs cursor-pointer py-1.5 px-3">
-                                  Choose .json file
-                                  <input
-                                    type="file"
-                                    accept=".json,application/json"
-                                    className="hidden"
-                                    onChange={onQuizImportFile}
-                                  />
-                                </label>
-                              </div>
-                              <textarea
-                                className="input-field text-xs font-mono"
-                                rows={10}
-                                placeholder='[ { "question_type": "mcq", "question_text": "...", "points": 1, "options": [ ... ] } ]'
-                                value={quizImportText}
-                                onChange={(e) =>
-                                  setQuizImportText(e.target.value)
-                                }
-                              />
-                              <button
-                                type="button"
-                                className="btn-primary text-sm self-start"
-                                disabled={importingQuizBatch}
-                                onClick={runQuizImport}
-                              >
-                                {importingQuizBatch ? (
-                                  <Spinner size={14} />
-                                ) : (
-                                  "Import into this quiz"
-                                )}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+                          </>
+                        ) : null}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </>
         )}
       </div>
