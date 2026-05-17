@@ -1,8 +1,10 @@
 const router = require("express").Router();
 const { body, param, query } = require("express-validator");
 const {
+  initiateTransaction,
+  checkTransactionStatus,
+  verifyTransaction,
   getMyTransactions,
-  createTransaction,
   getInstructorEarnings,
   getAllTransactions,
   refundTransaction,
@@ -12,7 +14,7 @@ const { validate } = require("../middleware/validate");
 
 router.use(verifyToken);
 
-// GET  /api/v1/transactions/my                — student
+// GET  /api/v1/transactions/my                — student: purchase history
 router.get("/my", requireRole("student"), getMyTransactions);
 
 // GET  /api/v1/transactions/instructor/earnings — instructor/admin
@@ -22,7 +24,7 @@ router.get(
   getInstructorEarnings,
 );
 
-// GET  /api/v1/transactions                    — admin
+// GET  /api/v1/transactions                    — admin: all transactions
 router.get(
   "/",
   requireRole("admin"),
@@ -35,17 +37,32 @@ router.get(
   getAllTransactions,
 );
 
-// POST /api/v1/transactions                    — student
+// POST /api/v1/transactions/initiate           — student: start Safepay checkout
 router.post(
-  "/",
+  "/initiate",
   requireRole("student"),
   body("course_id").isInt({ min: 1 }),
-  body("amount").isNumeric(),
-  body("currency").optional().isString().isLength({ min: 2, max: 10 }),
-  body("payment_method").optional().isString(),
-  body("provider_ref").optional().isString(),
   validate,
-  createTransaction,
+  initiateTransaction,
+);
+
+// POST /api/v1/transactions/verify             — student: confirm payment after redirect
+router.post(
+  "/verify",
+  requireRole("student"),
+  body("orderId").notEmpty(),
+  body("signature").notEmpty(),
+  validate,
+  verifyTransaction,
+);
+
+// GET  /api/v1/transactions/:txId/status       — student: poll payment status
+router.get(
+  "/:txId/status",
+  requireRole("student"),
+  param("txId").isInt({ min: 1 }),
+  validate,
+  checkTransactionStatus,
 );
 
 // POST /api/v1/transactions/:transactionId/refund — admin

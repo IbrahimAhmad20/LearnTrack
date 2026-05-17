@@ -10,6 +10,7 @@
     "seed:auth": "node scripts/seed-auth-users.js"
   },
   "dependencies": {
+    "@sfpy/node-sdk": "^3.0.2",
     "@supabase/supabase-js": "^2.43.4",
     "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.7",

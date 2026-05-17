@@ -45,8 +45,8 @@ async function listCourses(req, res, next) {
       .from("courses")
       .select(
         `
-        course_id, title, description, total_duration_sec,
-        is_published, created_at,
+        course_id, title, description, thumbnail_url, total_duration_sec,
+        price, discounted_price, is_published, created_at,
         categories ( category_id, name ),
         instructors (
           instructor_id,
@@ -119,7 +119,7 @@ async function getCourse(req, res, next) {
       .select(
         `
         course_id, title, description, thumbnail_url, total_duration_sec,
-        is_published, created_at, updated_at,
+        price, discounted_price, is_published, created_at, updated_at,
         categories ( category_id, name ),
         instructors (
           instructor_id,
@@ -203,13 +203,10 @@ async function createCourse(req, res, next) {
             "createCourse admin instructors insert error:",
             `code=${cErr.code} msg=${cErr.message}`,
           );
-          return res
-            .status(403)
-            .json({
-              error:
-                "Could not create instructor profile for admin: " +
-                cErr.message,
-            });
+          return res.status(403).json({
+            error:
+              "Could not create instructor profile for admin: " + cErr.message,
+          });
         }
         instructorId = created.instructor_id;
       }
@@ -276,8 +273,15 @@ async function createCourse(req, res, next) {
 async function updateCourse(req, res, next) {
   try {
     // [F1] category name → category_id
-    const { title, description, category, is_published, thumbnail_url } =
-      req.body;
+    const {
+      title,
+      description,
+      category,
+      is_published,
+      thumbnail_url,
+      price,
+      discounted_price,
+    } = req.body;
     const id = Number(req.params.id);
 
     if (req.user.role === "instructor") {
@@ -325,6 +329,10 @@ async function updateCourse(req, res, next) {
     if (description !== undefined) updates.description = description;
     if (is_published !== undefined) updates.is_published = is_published;
     if (thumbnail_url !== undefined) updates.thumbnail_url = thumbnail_url;
+    if (price !== undefined) updates.price = price === "" ? 0 : Number(price);
+    if (discounted_price !== undefined)
+      updates.discounted_price =
+        discounted_price === "" ? null : Number(discounted_price);
 
     // [F1] Resolve category name → category_id only if provided
     if (category !== undefined) {

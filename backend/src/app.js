@@ -26,6 +26,13 @@ const notificationRoutes = require("./routes/notifications"); // [CF5] notificat
 const app = express();
 
 app.use(helmet());
+
+// ── CORS ─────────────────────────────────────────────────────────────────────
+// /transactions/callback is called by Safepay's servers (POST after payment).
+// It must accept requests from any origin. Register it BEFORE the restrictive
+// global CORS middleware so Safepay's POST isn't blocked.
+app.use("/api/v1/transactions/callback", cors());
+
 app.use(
   cors({
     origin: process.env.CLIENT_ORIGIN || "http://localhost:5173",

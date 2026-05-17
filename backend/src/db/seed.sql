@@ -171,6 +171,90 @@ INSERT INTO content (course_id, content_type_id, title, content_url, content_bod
   (5, 1, 'Big-O Intuition',      'https://www.youtube.com/watch?v=9TlHvipP5yA', NULL,                                     600, 1, TRUE, TRUE),
   (5, 1, 'Stacks and Queues',    'https://www.youtube.com/watch?v=wjI1WNcIntg', NULL,                                     780, 2, TRUE, FALSE);
 
+
+-- ── PAID COURSES (courses 6–10) ───────────────────────────────────────────────
+INSERT INTO courses (course_id, instructor_id, title, description, category_id, price, discounted_price, is_published) VALUES
+  (
+    6,
+    (SELECT instructor_id FROM instructors WHERE user_id = '00000000-0000-0000-0000-000000000002' LIMIT 1),
+    'Full-Stack React & Node.js',
+    'Build production-ready full-stack apps with React, Node.js, Express, and PostgreSQL. Covers auth, REST APIs, deployment, and more.',
+    (SELECT category_id FROM categories WHERE name = 'Web Development'),
+    4999, 2999, TRUE
+  ),
+  (
+    7,
+    (SELECT instructor_id FROM instructors WHERE user_id = '00000000-0000-0000-0000-000000000009' LIMIT 1),
+    'Machine Learning with Python',
+    'From linear regression to neural networks. Hands-on with scikit-learn, pandas, and real datasets.',
+    (SELECT category_id FROM categories WHERE name = 'Data Science'),
+    5999, NULL, TRUE
+  ),
+  (
+    8,
+    (SELECT instructor_id FROM instructors WHERE user_id = '00000000-0000-0000-0000-000000000002' LIMIT 1),
+    'UI/UX Design Fundamentals',
+    'Learn design thinking, wireframing, prototyping, and Figma. Build a portfolio-ready case study from scratch.',
+    (SELECT category_id FROM categories WHERE name = 'Design'),
+    3499, 1999, TRUE
+  ),
+  (
+    9,
+    (SELECT instructor_id FROM instructors WHERE user_id = '00000000-0000-0000-0000-000000000001' LIMIT 1),
+    'DevOps & CI/CD with Docker',
+    'Containerise apps with Docker, set up CI/CD pipelines with GitHub Actions, and deploy to the cloud.',
+    (SELECT category_id FROM categories WHERE name = 'DevOps'),
+    6499, 3999, TRUE
+  ),
+  (
+    10,
+    (SELECT instructor_id FROM instructors WHERE user_id = '00000000-0000-0000-0000-000000000009' LIMIT 1),
+    'SQL Mastery: Advanced Queries',
+    'Window functions, CTEs, query optimisation, indexes, and real-world reporting patterns. Go beyond the basics.',
+    (SELECT category_id FROM categories WHERE name = 'Data Science'),
+    2999, NULL, TRUE
+  )
+ON CONFLICT (course_id) DO UPDATE SET
+  instructor_id    = EXCLUDED.instructor_id,
+  title            = EXCLUDED.title,
+  description      = EXCLUDED.description,
+  category_id      = EXCLUDED.category_id,
+  price            = EXCLUDED.price,
+  discounted_price = EXCLUDED.discounted_price,
+  is_published     = EXCLUDED.is_published,
+  updated_at       = NOW();
+
+-- ── CONTENT FOR PAID COURSES ──────────────────────────────────────────────────
+INSERT INTO content (course_id, content_type_id, title, content_url, content_body, duration_sec, sort_order, is_published, is_free_preview) VALUES
+  -- Course 6: Full-Stack React & Node.js
+  (6, 1, 'Project overview & setup',        'https://www.youtube.com/watch?v=nu_pCVPKzTk', NULL,                                   480, 1, TRUE, TRUE),
+  (6, 1, 'Building a REST API with Express','https://www.youtube.com/watch?v=pKd0Rpw7O48', NULL,                                   900, 2, TRUE, FALSE),
+  (6, 1, 'React state & hooks deep dive',   'https://www.youtube.com/watch?v=O6P86uwfdR0', NULL,                                   840, 3, TRUE, FALSE),
+  (6, 2, 'Architecture cheatsheet (PDF)',   'https://example.com/fullstack-arch.pdf',       'Reference guide for the whole course.', NULL,4, TRUE, FALSE),
+
+  -- Course 7: Machine Learning with Python
+  (7, 1, 'What is Machine Learning?',       'https://www.youtube.com/watch?v=ukzFI9rgwfU', NULL,                                   540, 1, TRUE, TRUE),
+  (7, 1, 'Linear Regression from scratch',  'https://www.youtube.com/watch?v=VmbA0pi2cRQ', NULL,                                   780, 2, TRUE, FALSE),
+  (7, 1, 'Classification with scikit-learn','https://www.youtube.com/watch?v=0B5eIE_1vpU', NULL,                                   820, 3, TRUE, FALSE),
+  (7, 2, 'ML formula sheet (PDF)',          'https://example.com/ml-formulas.pdf',          'Key equations and when to use them.',  NULL,4, TRUE, FALSE),
+
+  -- Course 8: UI/UX Design Fundamentals
+  (8, 1, 'Design thinking process',         'https://www.youtube.com/watch?v=_r0VX-aU_T8', NULL,                                   420, 1, TRUE, TRUE),
+  (8, 1, 'Wireframing in Figma',            'https://www.youtube.com/watch?v=FTFaQWZBqQ8', NULL,                                   660, 2, TRUE, FALSE),
+  (8, 2, 'Figma shortcuts (PDF)',           'https://example.com/figma-shortcuts.pdf',      'Print this out and keep it handy.',    NULL,3, TRUE, FALSE),
+
+  -- Course 9: DevOps & CI/CD with Docker
+  (9, 1, 'Docker in 20 minutes',            'https://www.youtube.com/watch?v=gAkwW2tuIqE', NULL,                                   480, 1, TRUE, TRUE),
+  (9, 1, 'Writing your first Dockerfile',   'https://www.youtube.com/watch?v=3c-iBn73dDE', NULL,                                   720, 2, TRUE, FALSE),
+  (9, 1, 'GitHub Actions CI/CD pipeline',   'https://www.youtube.com/watch?v=R8_veQiYBjI', NULL,                                   900, 3, TRUE, FALSE),
+  (9, 2, 'DevOps glossary (PDF)',           'https://example.com/devops-glossary.pdf',      'Terms you will see in every job spec.', NULL,4, TRUE, FALSE),
+
+  -- Course 10: SQL Mastery
+  (10, 1, 'Window functions explained',     'https://www.youtube.com/watch?v=H6OTMoXjNiM', NULL,                                   660, 1, TRUE, TRUE),
+  (10, 1, 'CTEs and recursive queries',     'https://www.youtube.com/watch?v=K1WeoKxLZ5o', NULL,                                   720, 2, TRUE, FALSE),
+  (10, 2, 'SQL patterns reference (PDF)',   'https://example.com/sql-patterns.pdf',         'Copy-paste ready query patterns.',     NULL,3, TRUE, FALSE)
+ON CONFLICT DO NOTHING;
+
 -- trg_maintain_course_duration fires on each INSERT above and updates
 -- courses.total_duration_sec automatically. No manual UPDATE needed. [F9]
 
@@ -929,6 +1013,4 @@ ON CONFLICT (user_id, course_id) DO NOTHING;
 -- Refresh analytics views so dashboards show updated numbers
 -- ════════════════════════════════════════════════════════════
 SELECT refresh_analytics_views();
--- ── REFRESH ANALYTICS MATERIALIZED VIEWS ─────────────────────────────────────
-
-
+-- ── REFRESH ANALYTICS MATERIALIZED VIEWS 
