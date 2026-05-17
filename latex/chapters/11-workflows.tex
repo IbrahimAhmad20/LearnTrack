@@ -1,0 +1,45 @@
+% Chapter 11 — Detailed Database Workflows
+
+\chapter{Detailed Database Workflows}
+\label{ch:workflows}
+
+\section{Workflow A --- Instructor builds a course}
+\begin{enumerate}[leftmargin=*]
+  \item Register or log in as instructor; ensure \texttt{users} and \texttt{instructors} rows exist.
+
+  \item Create \texttt{courses} row with correct \texttt{instructor\_id}.
+
+  \item Add \texttt{content} rows in teaching order (\texttt{sort\_order}).
+
+  \item Optional: create \texttt{quiz}, then \texttt{quiz\_questions} and \texttt{question\_options}.
+
+  \item Publish when ready (\texttt{is\_published}) so students see the catalogue entry.
+\end{enumerate}
+
+\textbf{Narrative line:} ``Authoring walks down the foreign-key chain: instructor owns course owns lessons owns quiz parts.''
+
+\section{Workflow B --- Student learning session}
+\begin{enumerate}[leftmargin=*]
+  \item Student enrolls $\rightarrow$ \texttt{enrollments}.
+
+  \item Opens a lesson $\rightarrow$ player sends activity events $\rightarrow$ \texttt{activity\_log}.
+
+  \item Progress updates $\rightarrow$ \texttt{content\_progress} upsert.
+
+  \item Takes quiz $\rightarrow$ \texttt{quiz\_attempts} + \texttt{quiz\_answers}.
+
+\end{enumerate}
+
+\textbf{Narrative line:} ``One session touches both fine-grained logs and coarse progress---that supports analytics depth without killing the progress bar query.''
+
+\section{Workflow C --- Refresh analytics}
+\begin{enumerate}[leftmargin=*]
+  \item Operational tables accumulate changes throughout the day.
+
+  \item Admin or cron calls stored function to refresh materialized views.
+
+  \item Instructor/admin dashboards read compact rows from \texttt{mv\_*}.
+
+\end{enumerate}
+
+\textbf{Narrative line:} ``This is a classic OLTP + reporting hybrid suitable for coursework scale; a larger company might export to a dedicated warehouse later.''

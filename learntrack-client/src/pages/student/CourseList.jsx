@@ -109,11 +109,13 @@ export default function CourseList() {
                 progress={isEnrolled ? 100 : 0}
                 description={course.description}
                 instructor={course.category}
-                thumbnail="▦"
+                thumbnail_url={course.thumbnail_url}
                 action={
                   isEnrolled ? (
                     <button
-                      onClick={() => navigate(`/student/courses/${course.course_id}`)}
+                      onClick={() =>
+                        navigate(`/student/courses/${course.course_id}`)
+                      }
                       className="btn-ghost w-full justify-center text-xs py-1.5"
                     >
                       Continue →
@@ -123,9 +125,15 @@ export default function CourseList() {
                       onClick={() => handleEnroll(course.course_id)}
                       disabled={enrolling === course.course_id}
                       className="btn-primary w-full justify-center text-xs py-1.5"
-                      style={{ opacity: enrolling === course.course_id ? 0.7 : 1 }}
+                      style={{
+                        opacity: enrolling === course.course_id ? 0.7 : 1,
+                      }}
                     >
-                      {enrolling === course.course_id ? <Spinner size={13} /> : "Enroll"}
+                      {enrolling === course.course_id ? (
+                        <Spinner size={13} />
+                      ) : (
+                        "Enroll"
+                      )}
                     </button>
                   )
                 }

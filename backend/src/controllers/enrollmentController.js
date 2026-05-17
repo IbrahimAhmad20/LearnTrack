@@ -1,24 +1,38 @@
-const { supabase } = require('../db/connection');
+const { supabase } = require("../db/connection");
 
 // ── GET /api/v1/enrollments/my ────────────────────────────────────────────────
 // Student sees all courses they are enrolled in
 async function getMyEnrollments(req, res, next) {
   try {
     const { data, error } = await supabase
-      .from('enrollments')
-      .select(`
+      .from("enrollments")
+      .select(
+        `
         enrollment_id, enrolled_at,
         enrollment_statuses ( status_name ),
         courses (
-          course_id, title, description, category, thumbnail_url,
+          course_id, title, description, thumbnail_url,
+          categories ( name ),
           instructors ( users ( full_name ) )
         )
-      `)
-      .eq('user_id', req.user.user_id)
-      .order('enrolled_at', { ascending: false });
+      `,
+      )
+      .eq("user_id", req.user.user_id)
+      .order("enrolled_at", { ascending: false });
 
     if (error) throw new Error(error.message);
-    res.json(data);
+
+    // Flatten categories.name → courses.category so the frontend
+    // mapEnrollment helper (row.courses?.category) keeps working unchanged.
+    const normalized = (data || []).map((row) => {
+      if (row.courses) {
+        row.courses.category = row.courses.categories?.name ?? null;
+        delete row.courses.categories;
+      }
+      return row;
+    });
+
+    res.json(normalized);
   } catch (err) {
     next(err);
   }
@@ -29,40 +43,48 @@ async function getMyEnrollments(req, res, next) {
 async function enroll(req, res, next) {
   try {
     const courseId = Number(req.params.courseId);
-    const userId   = req.user.user_id;
+    const userId = req.user.user_id;
 
     // Course must exist and be published
     const { data: course } = await supabase
-      .from('courses')
-      .select('course_id, is_published')
-      .eq('course_id', courseId)
-      .is('deleted_at', null)
+      .from("courses")
+      .select("course_id, is_published")
+      .eq("course_id", courseId)
+      .is("deleted_at", null)
       .maybeSingle();
 
-    if (!course)            return res.status(404).json({ error: 'Course not found' });
-    if (!course.is_published) return res.status(400).json({ error: 'Course is not open for enrollment' });
+    if (!course) return res.status(404).json({ error: "Course not found" });
+    if (!course.is_published)
+      return res
+        .status(400)
+        .json({ error: "Course is not open for enrollment" });
 
     // Prevent duplicate enrollments
     const { data: existing } = await supabase
-      .from('enrollments')
-      .select('enrollment_id')
-      .eq('user_id', userId)
-      .eq('course_id', courseId)
+      .from("enrollments")
+      .select("enrollment_id")
+      .eq("user_id", userId)
+      .eq("course_id", courseId)
       .maybeSingle();
 
-    if (existing) return res.status(409).json({ error: 'Already enrolled in this course' });
+    if (existing)
+      return res.status(409).json({ error: "Already enrolled in this course" });
 
     // Resolve 'active' status_id from lookup table
     const { data: statusRow } = await supabase
-      .from('enrollment_statuses')
-      .select('status_id')
-      .eq('status_name', 'active')
+      .from("enrollment_statuses")
+      .select("status_id")
+      .eq("status_name", "active")
       .single();
 
     const { data, error } = await supabase
-      .from('enrollments')
-      .insert({ user_id: userId, course_id: courseId, status_id: statusRow.status_id })
-      .select('enrollment_id')
+      .from("enrollments")
+      .insert({
+        user_id: userId,
+        course_id: courseId,
+        status_id: statusRow.status_id,
+      })
+      .select("enrollment_id")
       .single();
 
     if (error) throw new Error(error.message);
@@ -80,35 +102,39 @@ async function updateEnrollmentStatus(req, res, next) {
     const { status_name } = req.body;
 
     // Students can only update their own enrollments
-    if (req.user.role === 'student') {
+    if (req.user.role === "student") {
       const { data: own } = await supabase
-        .from('enrollments')
-        .select('enrollment_id')
-        .eq('enrollment_id', enrollmentId)
-        .eq('user_id', req.user.user_id)
+        .from("enrollments")
+        .select("enrollment_id")
+        .eq("enrollment_id", enrollmentId)
+        .eq("user_id", req.user.user_id)
         .maybeSingle();
 
-      if (!own) return res.status(403).json({ error: 'Not your enrollment' });
+      if (!own) return res.status(403).json({ error: "Not your enrollment" });
     }
 
     // Resolve status name → status_id
     const { data: statusRow, error: sErr } = await supabase
-      .from('enrollment_statuses')
-      .select('status_id')
-      .eq('status_name', status_name)
+      .from("enrollment_statuses")
+      .select("status_id")
+      .eq("status_name", status_name)
       .maybeSingle();
 
     if (sErr || !statusRow) {
-      return res.status(400).json({ error: `Unknown status: "${status_name}". Valid: active, completed, dropped` });
+      return res
+        .status(400)
+        .json({
+          error: `Unknown status: "${status_name}". Valid: active, completed, dropped`,
+        });
     }
 
     const { error } = await supabase
-      .from('enrollments')
+      .from("enrollments")
       .update({ status_id: statusRow.status_id })
-      .eq('enrollment_id', enrollmentId);
+      .eq("enrollment_id", enrollmentId);
 
     if (error) throw new Error(error.message);
-    res.json({ message: 'Enrollment status updated' });
+    res.json({ message: "Enrollment status updated" });
   } catch (err) {
     next(err);
   }
@@ -118,12 +144,12 @@ async function updateEnrollmentStatus(req, res, next) {
 async function unenroll(req, res, next) {
   try {
     const { error } = await supabase
-      .from('enrollments')
+      .from("enrollments")
       .delete()
-      .eq('enrollment_id', Number(req.params.enrollmentId));
+      .eq("enrollment_id", Number(req.params.enrollmentId));
 
     if (error) throw new Error(error.message);
-    res.json({ message: 'Enrollment removed' });
+    res.json({ message: "Enrollment removed" });
   } catch (err) {
     next(err);
   }

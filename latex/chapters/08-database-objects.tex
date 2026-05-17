@@ -1,0 +1,48 @@
+% Chapter 8 — Database Programming Artefacts
+
+\chapter{Database Programming Artefacts}
+\label{ch:objs}
+
+\section{Why not only tables?}
+Tables alone cannot enforce every rule. PostgreSQL lets us attach \textbf{functions} and \textbf{triggers} so that certain updates always run: validate instructor rows, stamp \texttt{updated\_at}, refresh analytics in one call.
+
+\section{Triggers (automatic rules)}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Instructor role check.} Before inserting into \texttt{instructors}, the database checks that the linked \texttt{users} row really has role instructor or admin and is not soft-deleted. This stops accidental profiles for students.
+
+  \item \textbf{Auto-create instructor profile.} When a user's role becomes instructor/admin, a trigger can insert the matching \texttt{instructors} row so course creation never fails for missing profile IDs.
+
+  \item \textbf{\texttt{updated\_at} stamps.} A generic trigger sets \texttt{updated\_at = NOW()} on listed tables whenever a row updates---consistent audit trail without repeating code in every API route.
+\end{itemize}
+
+\section{Functions}
+\textbf{\texttt{refresh\_analytics\_views()}} runs \texttt{REFRESH MATERIALIZED VIEW} for all five \texttt{mv\_*} objects in sequence. The admin API exposes an endpoint that calls this via \texttt{rpc}. Without scheduled refresh, dashboards show slightly old numbers---acceptable for coursework if explained.
+
+\textbf{\texttt{refresh\_performance\_summary()}} is a thin wrapper for backward compatibility; it simply calls the bulk refresh function.
+
+\textbf{\texttt{handle\_new\_auth\_user()}} (when wired in Supabase) inserts into \texttt{public.users} when Auth creates a login---keeps application profile and Auth UUID aligned.
+
+\section{Illustrative SQL: performance summary join pattern}
+Listing~\ref{lst:perf} shows the \textbf{LEFT JOIN} pattern behind \texttt{mv\_performance\_summary}. Plain-language meaning: start from every enrollment (student + course). Attach optional facts---watch logs, progress, quiz attempts---without dropping enrollments that have no events yet.
+
+\begin{lstlisting}[caption={Core join pattern for per-student per-course metrics (simplified)},label=lst:perf]
+SELECT e.user_id, e.course_id,
+       COALESCE(SUM(al.watch_time),0)     AS total_watch_sec,
+       COALESCE(AVG(qa.score)::NUMERIC,0)   AS avg_quiz_score,
+       COALESCE(AVG(cp.progress_percent)::NUMERIC,0) AS completion_pct
+FROM enrollments e
+LEFT JOIN content c ON c.course_id = e.course_id
+LEFT JOIN activity_log al
+       ON al.content_id = c.content_id AND al.user_id = e.user_id
+LEFT JOIN content_progress cp
+       ON cp.content_id = c.content_id AND cp.user_id = e.user_id
+LEFT JOIN quiz q ON q.course_id = e.course_id
+LEFT JOIN quiz_attempts qa
+       ON qa.quiz_id = q.quiz_id AND qa.user_id = e.user_id
+GROUP BY e.user_id, e.course_id;
+\end{lstlisting}
+
+\textbf{Why LEFT JOIN?} If a student never opened a quiz, inner joins would erase them from the result. LEFT JOIN keeps the enrollment row and turns missing facts into NULL, which \texttt{COALESCE} turns into zero where appropriate.
+
+\section{Talking point}
+Say: ``Triggers encode rules once for every client; functions bundle maintenance tasks like refreshing all analytics views in the correct order.''

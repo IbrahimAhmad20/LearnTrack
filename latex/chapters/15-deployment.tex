@@ -1,0 +1,52 @@
+% Chapter 15 — Deployment Considerations
+
+\chapter{Deployment Considerations}
+\label{ch:deploy}
+
+\section{Typical hosting split}
+LearnTrack is commonly deployed with:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Vercel} for the React build (static assets + SPA routing).
+
+  \item \textbf{Render} (or similar) for the Node Express API.
+
+  \item \textbf{Supabase} for PostgreSQL, Auth, and optional storage.
+
+\end{itemize}
+
+\section{Environment variables that must match}
+\begin{itemize}[leftmargin=*]
+  \item \texttt{VITE\_API\_URL} on the frontend must point to the deployed API \textbf{including} \texttt{/api/v1} if your client code expects that base.
+
+  \item \texttt{CLIENT\_ORIGIN} (or equivalent CORS setting) on the backend must exactly match the deployed frontend URL---including \texttt{https} and no trailing slash mismatches.
+
+  \item Database URL and service role key live only on the server; never embed them in React.
+
+\end{itemize}
+
+\section{Common production mistakes (and fixes)}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{404 on all routes:} API base URL missing \texttt{/api/v1} segment.
+
+  \item \textbf{CORS errors in browser console:} backend allowed origin does not match Vercel domain.
+
+  \item \textbf{Stale frontend env vars:} Vite bakes \texttt{VITE\_*} at build time---redeploy after changing them.
+
+  \item \textbf{Cold starts on free tiers:} first request after idle may be slow; retry logic or warm-up ping helps demos.
+
+\end{itemize}
+
+\section{Demo checklist}
+\begin{enumerate}[leftmargin=*]
+  \item Hit \texttt{/api/v1/health} and confirm JSON status.
+
+  \item Log in from deployed UI.
+
+  \item Create a course and one quiz; submit one attempt as a student.
+
+  \item Trigger analytics refresh if instructor tiles look empty.
+
+  \item Confirm browser console has no CORS errors.
+
+\end{enumerate}

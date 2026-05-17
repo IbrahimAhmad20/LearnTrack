@@ -1,0 +1,42 @@
+% Chapter 1 — Introduction (plain-language edition)
+
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{Why this project matters}
+Schools and training centres increasingly teach online. That creates a simple question: \textit{what are learners actually doing}? Are they opening lessons? How long do they watch? Do they skip videos? How do they score on short quizzes?
+
+If we store this information in spreadsheets or scattered files, reports soon disagree with reality. Names get duplicated, totals do not match, and nobody trusts the numbers.
+
+A \textbf{database} fixes this by keeping \textbf{one official copy} of each fact. SQL makes it easy to ask questions like ``how many students finished Module 2?'' or ``who spent the least time on videos last week?'' The database also \textbf{blocks nonsense data}: for example, you cannot enroll someone in a course that does not exist, because the database enforces \textbf{foreign keys}.
+
+\section{Problem we solved}
+We needed a system that does three things at once:
+
+\begin{enumerate}[label=(\alph*),leftmargin=*]
+  \item \textbf{Day-to-day use.} Students register, join courses, watch content, and take quizzes. Instructors create courses and see basic reports. All of this must feel fast and reliable.
+  \item \textbf{Detailed behaviour data.} We store \textbf{events} (play, pause, skip, etc.) and \textbf{watch time in seconds}, not just ``completed yes/no.'' That supports honest analytics later.
+  \item \textbf{Reports without killing the server.} Counting and joining millions of raw rows on every button click is expensive. We therefore store some \textbf{pre-calculated summaries} (materialized views) that dashboards read quickly.
+\end{enumerate}
+
+\section{What we set out to achieve}
+\begin{enumerate}[leftmargin=*]
+  \item Design a \textbf{clear relational model}: separate tables for users, courses, enrollments, lessons, quizzes, attempts, and small ``lookup'' lists (status names, activity types, etc.).
+  \item Put \textbf{business rules in the database} where possible: primary keys, foreign keys, checks, and uniqueness so the app cannot accidentally create duplicate enrollments or orphan rows.
+  \item Build \textbf{analytics snapshots} (materialized views) keyed by student and course, so instructor dashboards stay responsive.
+  \item Keep \textbf{history when we hide things}: soft deletes for users and courses, timestamps on important rows, and full quiz attempt + answer detail for auditing.
+  \item Expose everything through a \textbf{REST API} (\texttt{/api/v1/...}) so the React app never talks SQL directly.
+\end{enumerate}
+
+\section{What this report covers (and what it does not)}
+\textbf{In scope:} How tables relate to each other; why we chose UUIDs for people and integers for courses; how enrollments, activity, progress, and quizzes map to SQL; how materialized views and refresh functions support analytics; how API routes match database writes.
+
+\textbf{Out of scope:} Machine learning grade prediction; native mobile apps; heavy research on learning psychology. Those could build \textit{on top of} this database later.
+
+\section{How to read this report}
+\begin{itemize}[leftmargin=*]
+  \item Chapter~\ref{ch:overview} gives the big picture: browser, API, Supabase PostgreSQL.
+  \item Chapter~\ref{ch:req} lists requirements and which tables satisfy them.
+  \item Chapters~\ref{ch:conceptual} and~\ref{ch:logical} explain the entity model and normalization; placeholders show where your ERD and relational diagram go.
+  \item Later chapters cover indexes, the full data dictionary, triggers, transactions, analytics queries, workflows, SQL examples, frontend data flow, testing, deployment, and conclusions.
+\end{itemize}

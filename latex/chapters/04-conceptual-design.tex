@@ -1,0 +1,68 @@
+% Chapter 4 — Conceptual Database Design
+
+\chapter{Conceptual Database Design}
+\label{ch:conceptual}
+
+\section{What ``conceptual'' means here}
+Before we talk about SQL types and indexes, we draw the world in business terms: \textbf{entities} (things), \textbf{relationships} (how things link), and \textbf{cardinality} (one-to-many, many-to-many). The conceptual model should make sense to a non-programmer: ``A course has many lessons; a student joins many courses through enrollment.''
+
+\section{Four storylines}
+\textbf{Teaching side.} A person who can teach has a row in \texttt{instructors}. That profile owns \textbf{courses}. Each course contains many \textbf{content} rows (lessons), ordered for display.
+
+\textbf{Learning side.} A student links to a course through \textbf{enrollment}. That row is the permission slip: without it, we should not attribute activity to ``being in the course'' for analytics.
+
+\textbf{Behaviour side.} While learning, the app writes \textbf{activity\_log} rows (many events per student per lesson) and upserts \textbf{content\_progress} (one summary percentage per student per lesson). Logs give detail; progress gives quick ``how far'' reads.
+
+\textbf{Assessment side.} Each course can have \textbf{quizzes}. A quiz has \textbf{questions} and each question has \textbf{options}. When a student submits, we store one \textbf{attempt} and many \textbf{answer} rows---one per question.
+
+\section{Cardinality cheat sheet}
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{From} & \textbf{To} & \textbf{Meaning in words} \\
+\midrule
+\texttt{users} & \texttt{instructors} & At most one instructor profile per user (only teachers/admins). \\
+\texttt{instructors} & \texttt{courses} & One instructor teaches many courses. \\
+\texttt{users} + \texttt{courses} & \texttt{enrollments} & Many-to-many: resolved by an enrollment row (student + course). \\
+\texttt{courses} & \texttt{content} & One course has many lessons. \\
+\texttt{users}, \texttt{content} & \texttt{activity\_log} & Many events over time. \\
+\texttt{users}, \texttt{content} & \texttt{content\_progress} & At most one progress row per pair (unique constraint). \\
+\texttt{courses} & \texttt{quiz} & Many quizzes per course. \\
+\texttt{quiz} & \texttt{quiz\_questions} & Many questions per quiz. \\
+\texttt{quiz\_questions} & \texttt{question\_options} & Many options (MCQ) or two (true/false). \\
+\texttt{users}, \texttt{quiz} & \texttt{quiz\_attempts} & Student can attempt multiple times if allowed. \\
+\texttt{quiz\_attempts} & \texttt{quiz\_answers} & One row per question answered in that attempt. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Why UUID for people and integers for courses}
+\textbf{UUID} for \texttt{users.user\_id} matches Supabase Auth: every signup gets a unique ID that never clashes with another project or environment.
+
+\textbf{SERIAL integers} for \texttt{course\_id}, \texttt{content\_id}, etc.\ keep joins compact and human-readable in demo data (\texttt{course\_id = 1}).
+
+\section{Conceptual Entity--Relationship Diagram (ERD)}
+\label{sec:erd-fig}
+
+The ERD shows \textbf{entity names} and \textbf{relationship lines}, usually without every column. Standard tools: draw.io, Lucidchart, dbdiagram.io. Export to PDF or PNG and place it as \texttt{figures/erd.pdf} or \texttt{figures/erd.png}.
+
+\textbf{Minimum entities to draw:} \texttt{users}, \texttt{instructors}, \texttt{courses}, \texttt{enrollments}, \texttt{content}, \texttt{activity\_log}, \texttt{content\_progress}, \texttt{quiz}, \texttt{quiz\_questions}, \texttt{question\_options}, \texttt{quiz\_attempts}, \texttt{quiz\_answers}, plus small lookup entities (\texttt{activity\_types}, \texttt{content\_types}, \texttt{enrollment\_statuses}, \texttt{question\_types}).
+
+\textbf{How to insert your diagram:} Uncomment one \texttt{\textbackslash includegraphics} line below and remove the placeholder box.
+
+\begin{figure}[htbp]
+  \centering
+  % \includegraphics[width=0.94\textwidth,height=0.55\textheight,keepaspectratio]{erd.pdf}
+  % \includegraphics[width=0.94\textwidth,height=0.55\textheight,keepaspectratio]{erd.png}
+  \fcolorbox{black!50}{black!2}{%
+    \parbox{0.92\textwidth}{%
+      \centering\vspace{3.2cm}
+      {\large\textbf{Placeholder: Conceptual ERD}}\\[1.2em]
+      \textit{Add file} \texttt{latex/figures/erd.pdf} \textit{or} \texttt{erd.png}\\[0.6em]
+      \small Entities + relationships + cardinalities
+      \vspace{3.2cm}
+    }%
+  }
+  \caption{Conceptual ERD for LearnTrack (replace placeholder with your diagram).}
+  \label{fig:erd}
+\end{figure}

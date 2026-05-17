@@ -1,16 +1,53 @@
 const { supabase } = require("../db/connection");
 
+// ── Helper: resolve a category name → category_id ────────────────────────────
+// [F1] category is now a FK to the categories lookup table.
+// Accepts a category name string and returns the matching category_id.
+// Returns null (not an error) if the name is not provided.
+// Returns a 400 response object if the name is provided but unknown.
+async function resolveCategoryId(categoryName) {
+  if (!categoryName) return { categoryId: null, deny: null };
+
+  const { data, error } = await supabase
+    .from("categories")
+    .select("category_id")
+    .eq("name", categoryName)
+    .maybeSingle();
+
+  if (error)
+    return { categoryId: null, deny: { status: 500, message: error.message } };
+  if (!data) {
+    // Fetch valid names so the API error is actually helpful
+    const { data: all } = await supabase
+      .from("categories")
+      .select("name")
+      .order("name");
+    const valid = (all || []).map((r) => r.name).join(", ");
+    return {
+      categoryId: null,
+      deny: {
+        status: 400,
+        message: `Unknown category: "${categoryName}". Valid values: ${valid}`,
+      },
+    };
+  }
+
+  return { categoryId: data.category_id, deny: null };
+}
+
 // ── GET /api/v1/courses ───────────────────────────────────────────────────────
 async function listCourses(req, res, next) {
   try {
     const { category, search } = req.query;
 
+    // [F1] Select category_id and join categories for the name instead of raw text
     let q = supabase
       .from("courses")
       .select(
         `
-        course_id, title, description, category,
+        course_id, title, description, total_duration_sec,
         is_published, created_at,
+        categories ( category_id, name ),
         instructors (
           instructor_id,
           users ( full_name )
@@ -21,7 +58,8 @@ async function listCourses(req, res, next) {
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
-    if (category) q = q.ilike("category", category);
+    // [F1] Filter by category name via the joined table
+    if (category) q = q.eq("categories.name", category);
     if (search)
       q = q.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
 
@@ -34,8 +72,6 @@ async function listCourses(req, res, next) {
 }
 
 // ── GET /api/v1/courses/mine ───────────────────────────────────────────────────
-// Courses owned by the logged-in instructor (or admin tied to one instructor row).
-// Not the same as GET /courses (public catalogue of published courses).
 async function listMyCourses(req, res, next) {
   try {
     const { data: instructor, error: instErr } = await supabase
@@ -47,12 +83,14 @@ async function listMyCourses(req, res, next) {
     if (instErr) throw new Error(instErr.message);
     if (!instructor) return res.json([]);
 
+    // [F1] Join categories instead of raw category text
     const { data, error } = await supabase
       .from("courses")
       .select(
         `
-        course_id, title, description, category,
+        course_id, title, description, total_duration_sec,
         is_published, created_at,
+        categories ( category_id, name ),
         instructors (
           instructor_id,
           users ( full_name )
@@ -71,17 +109,18 @@ async function listMyCourses(req, res, next) {
 }
 
 // ── GET /api/v1/courses/:id ───────────────────────────────────────────────────
-// NEW: single course detail with full content + quiz list
 async function getCourse(req, res, next) {
   try {
     const courseId = Number(req.params.id);
 
+    // [F1] Join categories for the name
     const { data: course, error } = await supabase
       .from("courses")
       .select(
         `
-        course_id, title, description, category, thumbnail_url,
+        course_id, title, description, thumbnail_url, total_duration_sec,
         is_published, created_at, updated_at,
+        categories ( category_id, name ),
         instructors (
           instructor_id,
           department,
@@ -97,7 +136,6 @@ async function getCourse(req, res, next) {
     if (error || !course)
       return res.status(404).json({ error: "Course not found" });
 
-    // Only return unpublished courses to instructors/admins
     if (
       !course.is_published &&
       !["instructor", "admin"].includes(req.user.role)
@@ -105,20 +143,19 @@ async function getCourse(req, res, next) {
       return res.status(404).json({ error: "Course not found" });
     }
 
-    // Fetch content list
+    // [F5] Expose is_free_preview so the frontend can show preview badges
     const { data: content } = await supabase
       .from("content")
       .select(
-        "content_id, title, content_url, content_body, duration_sec, sort_order, is_published, content_types(type_name)",
+        "content_id, title, content_url, content_body, duration_sec, sort_order, is_published, is_free_preview, content_types(type_name)",
       )
       .eq("course_id", courseId)
       .order("sort_order");
 
-    // Fetch quizzes for this course
     const { data: quizzesRaw } = await supabase
       .from("quiz")
       .select(
-        "quiz_id, title, time_limit_min, pass_score, allow_multiple, is_published",
+        "quiz_id, title, time_limit_min, pass_score, allow_multiple, is_published, content_id",
       )
       .eq("course_id", courseId)
       .order("created_at");
@@ -137,60 +174,68 @@ async function getCourse(req, res, next) {
 // ── POST /api/v1/courses ──────────────────────────────────────────────────────
 async function createCourse(req, res, next) {
   try {
+    // [F1] Accept category name from client, resolve to category_id
     const { title, description, category, is_published = false } = req.body;
+
+    const { categoryId, deny: catDeny } = await resolveCategoryId(category);
+    if (catDeny)
+      return res.status(catDeny.status).json({ error: catDeny.message });
 
     let instructorId;
 
-    if (req.user.role === 'admin') {
-      // Admins can create courses without an instructors row.
-      // Use their user entry from the instructors table if one exists,
-      // otherwise find or create one.
+    if (req.user.role === "admin") {
       const { data: existing } = await supabase
-        .from('instructors')
-        .select('instructor_id')
-        .eq('user_id', req.user.user_id)
+        .from("instructors")
+        .select("instructor_id")
+        .eq("user_id", req.user.user_id)
         .maybeSingle();
 
       if (existing) {
         instructorId = existing.instructor_id;
       } else {
         const { data: created, error: cErr } = await supabase
-          .from('instructors')
+          .from("instructors")
           .insert({ user_id: req.user.user_id })
-          .select('instructor_id')
+          .select("instructor_id")
           .single();
         if (cErr) {
-          console.error('createCourse admin instructors insert error:', `code=${cErr.code} msg=${cErr.message} details=${cErr.details} hint=${cErr.hint}`);
-          // If trigger rejected it (e.g. user row not yet visible), return 403 not 500
-          return res.status(403).json({ error: 'Could not create instructor profile for admin: ' + cErr.message });
+          console.error(
+            "createCourse admin instructors insert error:",
+            `code=${cErr.code} msg=${cErr.message}`,
+          );
+          return res
+            .status(403)
+            .json({
+              error:
+                "Could not create instructor profile for admin: " +
+                cErr.message,
+            });
         }
         instructorId = created.instructor_id;
       }
     } else {
-      // Instructor path: look up their instructors row.
-      // If missing (timing race during registration), create it here as a self-heal.
       let { data: instructor, error: instErr } = await supabase
-        .from('instructors')
-        .select('instructor_id')
-        .eq('user_id', req.user.user_id)
+        .from("instructors")
+        .select("instructor_id")
+        .eq("user_id", req.user.user_id)
         .maybeSingle();
 
       if (!instructor) {
-        console.warn(`createCourse: no instructors row for user_id=${req.user.user_id} (${instErr?.message || 'not found'}), attempting self-heal insert`);
+        console.warn(
+          `createCourse: no instructors row for user_id=${req.user.user_id}, attempting self-heal`,
+        );
         const { data: created, error: createErr } = await supabase
-          .from('instructors')
+          .from("instructors")
           .insert({ user_id: req.user.user_id })
-          .select('instructor_id')
+          .select("instructor_id")
           .single();
 
         if (createErr) {
-          console.warn(`createCourse self-heal insert failed: code=${createErr.code} msg=${createErr.message} details=${createErr.details}`);
-          // If it's a duplicate (race between retries), try reading again
-          if (createErr.code === '23505') {
+          if (createErr.code === "23505") {
             const { data: retry } = await supabase
-              .from('instructors')
-              .select('instructor_id')
-              .eq('user_id', req.user.user_id)
+              .from("instructors")
+              .select("instructor_id")
+              .eq("user_id", req.user.user_id)
               .maybeSingle();
             instructor = retry;
           }
@@ -201,22 +246,23 @@ async function createCourse(req, res, next) {
 
       if (!instructor) {
         return res.status(403).json({
-          error: 'You must be a registered instructor to create courses',
+          error: "You must be a registered instructor to create courses",
         });
       }
       instructorId = instructor.instructor_id;
     }
 
+    // [F1] Insert category_id (FK) instead of raw category text
     const { data, error } = await supabase
-      .from('courses')
+      .from("courses")
       .insert({
         instructor_id: instructorId,
         title,
         description,
-        category,
+        category_id: categoryId, // [F1] was: category
         is_published,
       })
-      .select('course_id')
+      .select("course_id")
       .single();
 
     if (error) throw new Error(error.message);
@@ -229,6 +275,7 @@ async function createCourse(req, res, next) {
 // ── PUT /api/v1/courses/:id ───────────────────────────────────────────────────
 async function updateCourse(req, res, next) {
   try {
+    // [F1] category name → category_id
     const { title, description, category, is_published, thumbnail_url } =
       req.body;
     const id = Number(req.params.id);
@@ -240,7 +287,6 @@ async function updateCourse(req, res, next) {
         .eq("user_id", req.user.user_id)
         .maybeSingle();
 
-      // Self-heal: if instructor profile is missing, create it and retry lookup.
       if (!instructor) {
         const { data: created, error: createErr } = await supabase
           .from("instructors")
@@ -277,9 +323,16 @@ async function updateCourse(req, res, next) {
     const updates = {};
     if (title !== undefined) updates.title = title;
     if (description !== undefined) updates.description = description;
-    if (category !== undefined) updates.category = category;
     if (is_published !== undefined) updates.is_published = is_published;
     if (thumbnail_url !== undefined) updates.thumbnail_url = thumbnail_url;
+
+    // [F1] Resolve category name → category_id only if provided
+    if (category !== undefined) {
+      const { categoryId, deny: catDeny } = await resolveCategoryId(category);
+      if (catDeny)
+        return res.status(catDeny.status).json({ error: catDeny.message });
+      updates.category_id = categoryId; // [F1] was: updates.category = category
+    }
 
     const { error } = await supabase
       .from("courses")
@@ -312,10 +365,11 @@ async function deleteCourse(req, res, next) {
 // ── GET /api/v1/courses/:id/content ──────────────────────────────────────────
 async function getCourseContent(req, res, next) {
   try {
+    // [F5] is_free_preview exposed so the frontend can show preview badges
     const { data, error } = await supabase
       .from("content")
       .select(
-        "content_id, title, content_url, content_body, duration_sec, sort_order, is_published, content_types(type_id, type_name)",
+        "content_id, title, content_url, content_body, duration_sec, sort_order, is_published, is_free_preview, content_types(type_id, type_name)",
       )
       .eq("course_id", Number(req.params.id))
       .order("sort_order");
@@ -338,6 +392,7 @@ async function addContent(req, res, next) {
       duration_sec,
       sort_order = 0,
       is_published = false,
+      is_free_preview = false, // [F5] new field
     } = req.body;
 
     const { data: typeRow, error: typeErr } = await supabase
@@ -352,6 +407,7 @@ async function addContent(req, res, next) {
       });
     }
 
+    // [F5] is_free_preview persisted; trg_maintain_course_duration fires automatically [F9]
     const { data, error } = await supabase
       .from("content")
       .insert({
@@ -363,6 +419,7 @@ async function addContent(req, res, next) {
         duration_sec: duration_sec || null,
         sort_order,
         is_published,
+        is_free_preview: Boolean(is_free_preview), // [F5]
       })
       .select("content_id")
       .single();
@@ -375,7 +432,6 @@ async function addContent(req, res, next) {
 }
 
 // ── PUT /api/v1/courses/:id/content/:contentId ───────────────────────────────
-// NEW: edit a content item (title, sort_order, duration, publish toggle)
 async function updateContent(req, res, next) {
   try {
     const courseId = Number(req.params.id);
@@ -385,13 +441,12 @@ async function updateContent(req, res, next) {
       sort_order,
       duration_sec,
       is_published,
+      is_free_preview, // [F5] new field
       content_type,
       content_url,
       content_body,
-    } =
-      req.body;
+    } = req.body;
 
-    // Confirm content belongs to this course
     const { data: existing } = await supabase
       .from("content")
       .select("content_id")
@@ -409,10 +464,11 @@ async function updateContent(req, res, next) {
     if (sort_order !== undefined) updates.sort_order = Number(sort_order);
     if (duration_sec !== undefined) updates.duration_sec = duration_sec || null;
     if (is_published !== undefined) updates.is_published = is_published;
+    if (is_free_preview !== undefined)
+      updates.is_free_preview = Boolean(is_free_preview); // [F5]
     if (content_url !== undefined) updates.content_url = content_url || null;
     if (content_body !== undefined) updates.content_body = content_body || null;
 
-    // Allow changing content type
     if (content_type !== undefined) {
       const { data: typeRow, error: typeErr } = await supabase
         .from("content_types")
@@ -441,13 +497,11 @@ async function updateContent(req, res, next) {
 }
 
 // ── DELETE /api/v1/courses/:id/content/:contentId ────────────────────────────
-// NEW: remove a content item from a course
 async function deleteContent(req, res, next) {
   try {
     const courseId = Number(req.params.id);
     const contentId = Number(req.params.contentId);
 
-    // Confirm content belongs to this course before deleting
     const { data: existing } = await supabase
       .from("content")
       .select("content_id")
@@ -460,6 +514,7 @@ async function deleteContent(req, res, next) {
         .status(404)
         .json({ error: "Content item not found in this course" });
 
+    // trg_maintain_course_duration fires on DELETE and updates total_duration_sec [F9]
     const { error } = await supabase
       .from("content")
       .delete()
@@ -473,12 +528,10 @@ async function deleteContent(req, res, next) {
 }
 
 // ── GET /api/v1/courses/:id/students  (instructor + admin) ───────────────────
-// NEW: list all students enrolled in a course with their progress and status
 async function getCourseStudents(req, res, next) {
   try {
     const courseId = Number(req.params.id);
 
-    // Instructors can only view students in their own courses
     if (req.user.role === "instructor") {
       const { data: instructor } = await supabase
         .from("instructors")
@@ -520,13 +573,13 @@ async function getCourseStudents(req, res, next) {
 module.exports = {
   listCourses,
   listMyCourses,
-  getCourse, // new
+  getCourse,
   createCourse,
   updateCourse,
   deleteCourse,
   getCourseContent,
   addContent,
-  updateContent, // new
-  deleteContent, // new
-  getCourseStudents, // new
+  updateContent,
+  deleteContent,
+  getCourseStudents,
 };

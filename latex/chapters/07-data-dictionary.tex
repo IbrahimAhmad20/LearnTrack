@@ -1,0 +1,71 @@
+% Chapter 7 — Relational Schema and Data Dictionary
+
+\chapter{Relational Schema and Data Dictionary}
+\label{ch:dict}
+
+\section{How to use this chapter}
+Each subsection describes one table group. In a viva, you can point to the table name and say \textit{what row represents in real life} and \textit{which other tables it points to}.
+
+\section{Lookup (enumeration) tables}
+These tables exist only to give stable codes for short lists:
+
+\begin{description}[style=nextline]
+  \item[\texttt{activity\_types}]
+  Examples: \texttt{play}, \texttt{pause}, \texttt{skip}, \texttt{seek}, \texttt{complete}. Each row gets \texttt{type\_id}; \texttt{activity\_log} stores that ID instead of repeating text.
+
+  \item[\texttt{content\_types}]
+  \texttt{video}, \texttt{document}, \texttt{quiz}---tells the UI what kind of lesson row this is.
+
+  \item[\texttt{enrollment\_statuses}]
+  \texttt{active}, \texttt{completed}, \texttt{dropped}. Enrollment rows reference one status at a time.
+
+  \item[\texttt{question\_types}]
+  \texttt{mcq}, \texttt{true\_false}. Questions reference a type so grading UI knows what shape to expect.
+\end{description}
+
+\section{People and ownership}
+\textbf{\texttt{users}} holds everyone: students, instructors, admins. Primary key is UUID \texttt{user\_id}. Important columns: \texttt{full\_name}, unique \texttt{email}, \texttt{role}, optional profile fields, \texttt{is\_active}, soft-delete \texttt{deleted\_at}, timestamps.
+
+\textbf{\texttt{instructors}} extends users who teach. Surrogate key \texttt{instructor\_id} is what \texttt{courses} references---cleaner than repeating long UUIDs on every course row. One-to-one with a subset of users (\texttt{user\_id} unique).
+
+\textbf{\texttt{courses}} stores title, description, category, publish flag, soft delete. Foreign key \texttt{instructor\_id} $\rightarrow$ \texttt{instructors}.
+
+\section{Participation and content}
+\textbf{\texttt{enrollments}} is the bridge: which student is in which course, with which status. The pair (\texttt{user\_id}, \texttt{course\_id}) is \textbf{unique}---you cannot enroll twice in the same course as the same person.
+
+\textbf{\texttt{content}} rows are lessons inside a course: ordered by \texttt{sort\_order}, typed via \texttt{content\_types}, may store URL or body text.
+
+\section{Behaviour and progress}
+\textbf{\texttt{activity\_log}} is the ``fine detail'' table: who, which lesson, which event type, how many seconds watched (\texttt{watch\_time}), when (\texttt{event\_at}). Analytics like ``top watchers'' aggregate this table.
+
+\textbf{\texttt{content\_progress}} stores one rolling percentage per (\texttt{user\_id}, \texttt{content\_id}). The app upserts here when the student watches so the UI can show progress bars without scanning all historical events.
+
+\section{Quiz subsystem (five tables)}
+\textbf{\texttt{quiz}} --- one row per assessment attached to a \texttt{course\_id}: title, time limit, pass score, allow multiple attempts, publish flag.
+
+\textbf{\texttt{quiz\_questions}} --- question text, points, order, type.
+
+\textbf{\texttt{question\_options}} --- answer choices and \texttt{is\_correct} for automatic grading.
+
+\textbf{\texttt{quiz\_attempts}} --- one row each time a student submits; stores final \texttt{score}, \texttt{passed}, \texttt{attempt\_date}.
+
+\textbf{\texttt{quiz\_answers}} --- one row per question in that attempt: which option was chosen and whether it was correct. Unique on (\texttt{attempt\_id}, \texttt{question\_id}) prevents duplicate answers for the same question.
+
+\section{Sessions}
+\textbf{\texttt{user\_sessions}} stores a hash of the JWT (not the raw token), login time, logout time, expiry. The API can revoke sessions by marking logout, supporting ``log out everywhere'' style behaviour.
+
+\section{Materialized views (analytics snapshots)}
+These are \textbf{not} hand-edited tables; they are refreshed from base tables.
+
+\textbf{\texttt{mv\_performance\_summary}} --- per student per course: total watch seconds, average quiz score, completion-style percentage.
+
+\textbf{\texttt{mv\_active\_students}} --- platform-wide engagement rollup from activity (used in admin-style paths).
+
+\textbf{\texttt{mv\_underperforming\_students}} --- quiz averages per learner for global lists.
+
+\textbf{\texttt{mv\_skipped\_content}} --- counts skip events per lesson.
+
+\textbf{\texttt{mv\_completion\_rates}} --- average progress percent per learner per course from \texttt{content\_progress}.
+
+\section{Table count}
+The DDL defines \textbf{17 base tables} (including lookups and sessions) plus \textbf{5 materialized views}. This inventory matches \texttt{backend/src/db/ddl.sql}.

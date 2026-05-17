@@ -1,0 +1,26 @@
+% Chapter 10 — Queries, Joins, and Analytics Design
+
+\chapter{Queries, Joins \& Analytics Design}
+\label{ch:analytics}
+
+\section{Inner vs outer joins (teaching explanation)}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{INNER JOIN} keeps only rows that match on \textbf{both} sides. Example: list enrolled students with their names---drop users who somehow lack a profile row (should not happen if FKs hold).
+
+  \item \textbf{LEFT JOIN} keeps every row from the left side and attaches matching right-side rows when they exist. Missing matches show NULL. Use this when the left side is ``official truth'' (enrollments) and the right side is optional facts (quiz attempts).
+
+\end{itemize}
+
+\section{Why summaries sometimes ``multiply'' rows}
+If you join enrollments to content to activity \textbf{before} grouping incorrectly, one enrollment can fan out into thousands of activity rows. Aggregates like \texttt{SUM(watch\_time)} must happen at the right grain---usually ``sum watch seconds grouped by user,'' not ``count joined rows.'' Materialized views and careful GROUP BY avoid accidental inflation.
+
+\section{Materialized views vs live queries}
+\textbf{Materialized views} trade freshness for speed: good for dashboards refreshed every few minutes.
+
+\textbf{Live queries} on \texttt{activity\_log} respect exact date ranges (``last 7 days'') but cost more CPU. The LearnTrack analytics controller mixes strategies: instructors often use filtered live activity for ``active students'' while other tiles read \texttt{mv\_*} snapshots---know this when explaining why two numbers might not match to the second.
+
+\section{Refresh and staleness}
+Calling \texttt{refresh\_analytics\_views()} rebuilds all snapshots. Until then, last refresh time on disk may lag behind new quiz attempts. Operational teams schedule cron jobs or manual refresh after bulk imports.
+
+\section{Answer exam questions like this}
+``We store raw facts in normalized tables, aggregate heavy joins into materialized views for dashboards, and use indexes aligned with filter columns in the API.''

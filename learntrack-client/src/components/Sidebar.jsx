@@ -1,16 +1,67 @@
+import { useState, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import NotificationBell from "./NotificationBell";
+import api from "../api";
+
+// Small inline badge that fetches the unread count for the sidebar nav item
+function _UnreadBadge() {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let mounted = true;
+    api
+      .get("/notifications/me/unread-count")
+      .then((r) => {
+        if (mounted) setCount(r.data?.unread_count ?? 0);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+  if (!count) return null;
+  return (
+    <span
+      style={{
+        minWidth: 16,
+        height: 16,
+        borderRadius: 8,
+        background: "var(--danger)",
+        color: "#fff",
+        fontSize: 9,
+        fontWeight: 700,
+        fontFamily: "DM Mono, monospace",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "0 3px",
+      }}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
 
 const NAV = {
   instructor: [
     { to: "/instructor", label: "Overview", icon: "⬡", end: true },
     { to: "/instructor/courses", label: "Courses", icon: "▦" },
     { to: "/instructor/analytics", label: "Analytics", icon: "◈" },
+    { to: "/instructor/reviews", label: "Reviews", icon: "★" },
+    { to: "/instructor/earnings", label: "Earnings", icon: "◑" },
   ],
   student: [
     { to: "/student", label: "Dashboard", icon: "⬡", end: true },
     { to: "/student/courses", label: "Browse courses", icon: "▦" },
     { to: "/student/quizzes", label: "Quizzes", icon: "◈" },
+    { to: "/student/certificates", label: "Certificates", icon: "✦" },
+    {
+      to: "/student/notifications",
+      label: "Notifications",
+      icon: "◉",
+      badge: true,
+    },
+    { to: "/student/profile", label: "Profile", icon: "◐" },
   ],
   admin: [
     { to: "/admin", label: "Overview", icon: "⬡", end: true },
@@ -118,7 +169,7 @@ export default function Sidebar({ role }) {
         >
           Workspace
         </p>
-        {nav.map(({ to, label, icon, end }) => (
+        {nav.map(({ to, label, icon, end, badge }) => (
           <NavLink
             key={to}
             to={to}
@@ -129,6 +180,11 @@ export default function Sidebar({ role }) {
           >
             <span style={{ fontSize: 14, opacity: 0.7 }}>{icon}</span>
             {label}
+            {badge && role === "student" && (
+              <span style={{ marginLeft: "auto" }}>
+                <_UnreadBadge />
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

@@ -1,43 +1,60 @@
-LearnTrack — Detailed DBMS report (LaTeX)
-=========================================
+LearnTrack — DBMS report (LaTeX, modular)
+==========================================
 
-File: DBMS_PROJECT_REPORT.tex
+Main file
+---------
+`DBMS_PROJECT_REPORT.tex` — preamble, title page, abstract, table of contents,
+then `\input{chapters/...}` for each chapter. **Compile from the `latex/` folder**
+so paths to `figures/` and `chapters/` resolve correctly.
 
-Contents (expanded edition):
-  - Extended abstract & keywords
-  - Motivation, problem statement, objectives, scope
-  - Layered architecture table; roles (student / instructor / admin)
-  - Requirements traceability table → relations
-  - ER narrative & cardinality matrix
-  - Normalisation discussion (functional dependencies, decomposition)
-  - Physical design: indexes, column types
-  - Data dictionary prose for all core tables & views inventory
-  - Triggers/functions; illustrative SQL listing (performance summary joins)
-  - Transactional workflows: enrollment & quiz grading (step-by-step)
-  - API ↔ table mapping sketch; concurrency (enrollment UNIQUE)
-  - Join taxonomy, aggregation caveats, materialized-view staleness
-  - Frontend data perspective (quiz JSON import pattern)
-  - Testing, deployment, limitations, conclusions
-  - Bibliography | Appendices: REST inventory, glossary, repo file map
+Chapter files (edit these)
+---------------------------
+All under `latex/chapters/`:
 
-This report deliberately does NOT discuss PostgreSQL Row-Level Security (RLS);
-access control is described as JWT + Express middleware + query scoping only.
+| File | Topic |
+|------|--------|
+| `01-introduction.tex` | Motivation, problem, objectives, scope |
+| `02-system-overview.tex` | Architecture, API prefix, roles |
+| `03-requirements.tex` | Stakeholders, functional/non-functional requirements |
+| `04-conceptual-design.tex` | ER narrative, cardinality, ERD figure placeholder |
+| `05-logical-design.tex` | Normalisation, FDs, RDM figure placeholder |
+| `06-physical-design.tex` | Indexes, types, materialized view indexes |
+| `07-data-dictionary.tex` | Tables and views explained in plain language |
+| `08-database-objects.tex` | Triggers, functions, sample SQL listing |
+| `09-transactions.tex` | Enrollment & quiz flows, endpoint mapping |
+| `10-analytics.tex` | Joins, aggregates, refresh strategy |
+| `11-workflows.tex` | Authoring, learning session, analytics refresh |
+| `12-sql-patterns.tex` | Worked SQL examples |
+| `13-frontend.tex` | React ↔ API data flow |
+| `14-qa-testing.tex` | Testing and manual checklist |
+| `15-deployment.tex` | Vercel / Render / env vars |
+| `16-conclusion.tex` | Summary, limits, future work |
+| `99-appendices.tex` | REST inventory, glossary, repo map |
 
-ERD / RDM placeholders
-----------------------
-The report includes framed placeholders for:
-  • Figure: conceptual ERD       (Chapter: Conceptual Database Design)
-  • Figure: relational RDM       (Chapter: Logical Design)
-Add PDF/PNG files under figures/ — see figures/README.txt — then uncomment
-the \includegraphics lines in the two figure blocks.
+Figures
+-------
+Place `erd.pdf` / `erd.png` and `rdm.pdf` / `rdm.png` under `figures/`.
+Uncomment the `\includegraphics` lines inside chapters 4 and 5.
+See `figures/README.txt`.
 
-Compile (TeX Live / MiKTeX):
+Compile (TeX Live / MiKTeX)
+---------------------------
+```text
+cd learntrack\latex
+pdflatex DBMS_PROJECT_REPORT.tex
+pdflatex DBMS_PROJECT_REPORT.tex
+```
 
-  cd learntrack\latex
-  pdflatex DBMS_PROJECT_REPORT.tex
-  pdflatex DBMS_PROJECT_REPORT.tex
+Output: `DBMS_PROJECT_REPORT.pdf`
 
-Output: DBMS_PROJECT_REPORT.pdf
+Overleaf
+--------
+Upload `DBMS_PROJECT_REPORT.tex`, the whole `chapters/` folder, and `figures/`.
+Set the Overleaf project root so `chapters/` sits next to the main `.tex` file.
 
-Overleaf: upload DBMS_PROJECT_REPORT.tex and create a folder "figures/"
-if you add erd.pdf / rdm.pdf there.
+Style note
+----------
+The report text is written in **clear, plain English** for presentations; technical
+terms are introduced when needed. Row-Level Security (RLS) exists in `ddl.sql`
+but this report emphasises JWT + Express role checks unless your instructor
+asks for RLS detail.

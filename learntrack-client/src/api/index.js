@@ -47,7 +47,8 @@ export const courses = {
   addContent: (id, data) => api.post(`/courses/${id}/content`, data),
   updateContent: (id, contentId, data) =>
     api.put(`/courses/${id}/content/${contentId}`, data),
-  deleteContent: (id, contentId) => api.delete(`/courses/${id}/content/${contentId}`),
+  deleteContent: (id, contentId) =>
+    api.delete(`/courses/${id}/content/${contentId}`),
   students: (id) => api.get(`/courses/${id}/students`),
 };
 
@@ -57,8 +58,7 @@ export const analytics = {
     api.get("/analytics/completion-rates", { params }),
   underperforming: (params) =>
     api.get("/analytics/underperforming", { params }),
-  skippedContent: (params) =>
-    api.get("/analytics/skipped-content", { params }),
+  skippedContent: (params) => api.get("/analytics/skipped-content", { params }),
   instructorDash: (courseId) => api.get(`/analytics/instructor/${courseId}`),
   adminDashboard: () => api.get("/analytics/dashboard/admin"),
 };
@@ -88,8 +88,10 @@ export const enrollments = {
     );
     const avg =
       courseItems.length > 0
-        ? courseItems.reduce((sum, item) => sum + (item.progress_percent || 0), 0) /
-          courseItems.length
+        ? courseItems.reduce(
+            (sum, item) => sum + (item.progress_percent || 0),
+            0,
+          ) / courseItems.length
         : 0;
     return { ...res, data: { progress_pct: Math.round(avg) } };
   },
@@ -106,7 +108,8 @@ export const quizzes = {
   create: (data) => api.post("/quizzes", data),
   update: (quizId, data) => api.patch(`/quizzes/${quizId}`, data),
   addQuestion: (quizId, data) => api.post(`/quizzes/${quizId}/questions`, data),
-  submit: (quizId, answers) => api.post(`/quizzes/${quizId}/attempt`, { answers }),
+  submit: (quizId, answers) =>
+    api.post(`/quizzes/${quizId}/attempt`, { answers }),
 };
 
 export const progress = {
@@ -131,3 +134,70 @@ export const admin = {
   allCourses: (params) => api.get("/courses", { params }),
   deleteCourse: (id) => api.delete(`/courses/${id}`),
 };
+
+// ── CF1: Transactions ───────────────────────────────────────────────────────
+export const transactions = {
+  mine: () => api.get("/transactions/my"),
+  create: (data) => api.post("/transactions", data),
+  earnings: () => api.get("/transactions/instructor/earnings"),
+  all: (params) => api.get("/transactions", { params }),
+  refund: (id) => api.post(`/transactions/${id}/refund`),
+};
+
+// ── CF2: Reviews ────────────────────────────────────────────────────────────
+export const reviews = {
+  list: (courseId, params) =>
+    api.get(`/reviews/course/${courseId}`, { params }),
+  summary: (courseId) => api.get(`/reviews/course/${courseId}/summary`),
+  create: (courseId, data) => api.post(`/reviews/course/${courseId}`, data),
+  update: (reviewId, data) => api.patch(`/reviews/${reviewId}`, data),
+  delete: (reviewId) => api.delete(`/reviews/${reviewId}`),
+  instructorMine: () => api.get("/reviews/instructor/mine"),
+};
+
+// ── CF3: Certificates ───────────────────────────────────────────────────────
+export const certificates = {
+  mine: () => api.get("/certificates/me"),
+  verify: (hash) => api.get(`/certificates/verify/${hash}`),
+  all: (p) => api.get("/certificates", { params: p }),
+  revoke: (id) => api.delete(`/certificates/${id}`),
+  generate: (certId) => api.post(`/certificates/${certId}/generate`),
+};
+
+// ── CF4: Sections ───────────────────────────────────────────────────────────
+export const sections = {
+  byCourse: (courseId) => api.get(`/sections/course/${courseId}`),
+  create: (courseId, data) => api.post(`/sections/course/${courseId}`, data),
+  update: (sectionId, data) => api.patch(`/sections/${sectionId}`, data),
+  delete: (sectionId) => api.delete(`/sections/${sectionId}`),
+  assignContent: (contentId, section_id) =>
+    api.patch(`/sections/content/${contentId}/assign`, { section_id }),
+};
+
+// ── CF5: Notifications ──────────────────────────────────────────────────────
+export const notifications = {
+  list: (params) => api.get("/notifications/me", { params }),
+  unreadCount: () => api.get("/notifications/me/unread-count"),
+  markRead: (id) => api.patch(`/notifications/${id}/read`),
+  markAllRead: () => api.patch("/notifications/me/read-all"),
+  delete: (id) => api.delete(`/notifications/${id}`),
+};
+
+// ── Categories (for filter dropdowns) ───────────────────────────────────────
+export const categories = {
+  list: () => api.get("/courses/categories"),
+};
+
+// export { default as Navbar } from "./Navbar";
+// export { default as CourseCard } from "./CourseCard";
+// export { default as ContentPlayer } from "./ContentPlayer";
+// export { default as QuizRunner } from "./QuizRunner";
+// export { default as AnalyticsChart } from "./AnalyticsChart";
+// export { default as DataTable } from "./DataTable";
+// export { default as Heatmap } from "./Heatmap";
+// export { ToastProvider, useToast } from "./Toast";
+// export { default as ConfirmDialog } from "./ConfirmDialog";
+// export { default as StarRating } from "./StarRating";
+// export { default as ReviewModal } from "./ReviewModal";
+// export { default as SectionAccordion } from "./SectionAccordion";
+// export { default as NotificationBell } from "./NotificationBell";

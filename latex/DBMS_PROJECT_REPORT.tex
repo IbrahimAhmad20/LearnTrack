@@ -1,5 +1,6 @@
-% LearnTrack — DBMS Project Report (Detailed LaTeX)
-% Compile: pdflatex DBMS_PROJECT_REPORT.tex (run twice for TOC)
+% LearnTrack — DBMS Project Report (modular LaTeX)
+% Compile from this folder:  pdflatex DBMS_PROJECT_REPORT.tex  (run twice for TOC)
+% Chapters live in: latex/chapters/*.tex
 \documentclass[12pt,a4paper]{report}
 
 \usepackage[utf8]{inputenc}
@@ -38,7 +39,6 @@
   backgroundcolor=\color{black!3}
 }
 
-% PDF metadata (optional)
 \hypersetup{
   pdftitle={LearnTrack DBMS Project Report},
   pdfauthor={Muhammad Ibrahim}
@@ -46,7 +46,7 @@
 
 \begin{document}
 
-% ---------- Front page (Bahria University style — edit names/dates if needed) ----------
+% ---------- Title page ----------
 \begin{titlepage}
   \centering
   \vspace*{0.5cm}
@@ -54,11 +54,7 @@
   {\normalsize Department of Computer Science}\\
   {\normalsize Faculty of Computing and Information Technology}\\[1.0cm]
 
-
     \includegraphics[width=3.2cm]{Bahria.jpg}\\[1.2cm]
-  
-  
- 
 
   {\LARGE \textbf{LearnTrack}}\\[6pt]
   {\Large \textbf{Database Management Systems Project Report}}\\[4pt]
@@ -84,454 +80,43 @@
 \end{titlepage}
 \newpage
 
+% ---------- Abstract (plain language) ----------
 \begin{abstract}
-This report documents \textbf{LearnTrack}, an online learning platform that collects structured educational data---users, instructor profiles, courses, syllabus content, student enrollments, fine-grained learning events (watch time and interaction types), per-item completion progress, and a full quiz engine with attempts and per-answer records. The persistence layer is \textbf{PostgreSQL}, provisioned through \textbf{Supabase}. The schema applies classical relational modelling: lookup tables for enumerations, primary and foreign keys, check constraints, unique business rules (e.g.\ one enrollment per student per course), and soft-delete columns where history must be retained. Heavy analytical queries over multiple fact tables are precomputed using \textbf{five materialized views}, refreshed via a PostgreSQL function callable from the application. \textbf{Triggers} and stored \textbf{functions} (PL/pgSQL) maintain timestamps, instructor-profile consistency, and optional integration with authentication sign-ups.
+\textbf{LearnTrack} is an online learning web application. Students register, join courses, watch lessons, update progress, and take quizzes. Instructors create courses, add lessons and assessments, and view simple analytics (for example: who watches the most, who completes lessons, who scores low on quizzes). Administrators can oversee users and high-level statistics depending on the deployed features.
 
-The application architecture is three-tiered: a \textbf{React (Vite)} client, an \textbf{Express.js} REST API under \texttt{/api/v1}, and the PostgreSQL backend accessed through the Supabase JavaScript client (\texttt{@supabase/supabase-js}). \textbf{Access control} described in this report is \textbf{application-layer}: signed JSON Web Tokens, route-level role checks (\texttt{student}, \texttt{instructor}, \texttt{admin}), and deliberate filtering of queries by \texttt{user\_id}, \texttt{course\_id}, or instructor ownership---not row-level policies inside PostgreSQL.
+All important data is stored in \textbf{PostgreSQL} through \textbf{Supabase}. The database uses normal relational design: separate tables for users, courses, enrollments, lessons, events, progress, quizzes, attempts, and answers. Small lookup tables store fixed lists (activity types, content types, enrollment statuses). Rules such as ``one enrollment per student per course'' are enforced with \textbf{primary keys}, \textbf{foreign keys}, and \textbf{unique constraints}. Heavy report queries are precomputed in \textbf{five materialized views} and refreshed with a single database function. \textbf{Triggers} and small \textbf{SQL functions} keep timestamps updated and help keep instructor profiles consistent.
 
-
+The application has three layers: a \textbf{React (Vite)} website, an \textbf{Express.js} REST API under \texttt{/api/v1}, and PostgreSQL accessed with the Supabase JavaScript client. Users authenticate with \textbf{JWT} tokens; Express checks roles (\texttt{student}, \texttt{instructor}, \texttt{admin}) before running handlers. This report explains the design in straightforward language; Row-Level Security in PostgreSQL is mentioned in the DDL but the main story here is API-level access control.
 
 \end{abstract}
 
 \tableofcontents
 \newpage
 
-%----------------------------------------------------------------------
-\chapter{Introduction}
-\label{ch:intro}
-
-\section{Motivation}
-Universities and training providers increasingly rely on platforms that blend content delivery with measurement: which lessons students open, how long they dwell, whether they skip, and how they score on formative quizzes. Collecting such data in \textbf{ad hoc files} leads to inconsistencies, duplication, and reports that drift from operational truth. A \textbf{Database Management System} centralises persistence, exposes a declarative query language (SQL), and enforces \textbf{integrity constraints} so that analytic conclusions rest on coherent facts.
-
-\section{Problem Statement}
-The project addressed the problem of designing and implementing a relational database-backed system that simultaneously:
-\begin{enumerate}[label=(\alph*),leftmargin=*]
-  \item Supports \textbf{daily transactional use}: registration, enrollment, authoring, quiz taking.
-  \item Captures \textbf{event-oriented detail} suited to behaviour analysis (activity log with types and durations).
-  \item Supports \textbf{aggregated reporting} across students and courses without scanning entire raw histories on each dashboard refresh.
-\end{enumerate}
-
-\section{Objectives}
-\begin{enumerate}[leftmargin=*]
-  \item Produce a \textbf{third-normal-form style} relational model separating entities and lookup/reference tables.
-  \item Encode \textbf{business rules} as SQL constraints wherever practical (checks, FKs, uniqueness).
-  \item Implement \textbf{read-optimised aggregates} via materialised views keyed to common drill-down dimensions (\texttt{user\_id}, \texttt{course\_id}).
-  \item Maintain \textbf{audit-friendly} structures: timestamps, optional soft deletes, granular quiz answers.
-  \item Expose data through a documented \textbf{REST API} that mirrors resource boundaries (courses, enrollments, quizzes, analytics).
-\end{enumerate}
-
-\section{Scope and Boundaries}
-\textbf{In scope:} DDL shape and rationale; DML workflows as exercised by the server; analytic views; triggers and functions bundled with the schema script; deployment configuration at a high level.
-
-\textbf{Out of scope:} Large-scale behavioural science evaluation; predictive models over grades; dedicated mobile-native clients.
-
-\section{Report Structure}
-Chapter~\ref{ch:overview} summarises architecture and roles. Chapter~\ref{ch:req} traces requirements to tables. Chapter~\ref{ch:conceptual} ends with Figure~\ref{fig:erd} (\textbf{ERD placeholder}). Chapter~\ref{ch:logical} ends with Figure~\ref{fig:rdm} (\textbf{RDM placeholder}). Chapter~\ref{ch:physical} covers indexes and types; Chapter~\ref{ch:dict} is the data dictionary; Chapters~\ref{ch:objs}--\ref{ch:tx} cover programming objects, analytics queries, and API mapping; conclusion and appendices follow.
-
-%----------------------------------------------------------------------
-\chapter{System Overview}
-\label{ch:overview}
-
-\section{Layered Architecture}
-Table~\ref{tab:layers} summarises responsibilities. Requests flow downward: UI $\rightarrow$ HTTP $\rightarrow$ Node $\rightarrow$ Supabase Postgres API $\rightarrow$ storage engine.
-
-\begin{table}[htbp]
-\centering
-\caption{Three-tier stack for LearnTrack}
-\label{tab:layers}
-\begin{tabular}{@{}llp{6.8cm}@{}}
-\toprule
-\textbf{Tier} & \textbf{Technology} & \textbf{Responsibilities} \\
-\midrule
-Presentation & React + Vite + React Router &
-Render role-specific pages; axios client with Bearer token \\
-Application & Express.js &
-JWT verification; input validation (\texttt{express-validator}); orchestrate multi-row operations \\
-Integration & Supabase JS client &
-\texttt{.from(table)} CRUD filters; \texttt{.rpc(fn)} for DB functions \\
-Persistence & PostgreSQL &
-ACID transactions; indexes; triggers; views; materialized snapshots \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\section{Routing Namespace}
-All REST resources are prefixed with \texttt{/api/v1}: authentication (\texttt{/auth}); users; courses including nested content; enrollments; activity and progress endpoints; quizzes; analytics (active students, completion, underperformance, dashboards); instructors.
-
-\section{Roles and Capabilities}
-\begin{description}[style=nextline]
-  \item[Student]
-  Reads published catalogue; enrolls; logs activity; sends progress percentages; submits quiz attempts restricted to enrolled, active statuses and published quizzes.
-  \item[Instructor]
-  Creates updates own courses by resolving \texttt{instructors.user\_id} $\rightarrow$ \texttt{instructors.instructor\_id} $\rightarrow$ \texttt{courses.instructor\_id}.
-  Views analytics constrained to owned \texttt{course\_id}s.
-  \item[Admin]
-  May perform destructive or global operations routed in controllers (course soft-delete, enrollment removal, aggregated dashboards).
-\end{description}
-
-%----------------------------------------------------------------------
-\chapter{Requirements Analysis}
-\label{ch:req}
-
-\section{Stakeholder View}
-\textbf{Students} need a reliable record of enrolment status and reproducible quiz scores.\ \textbf{Instructors} need to publish structured content order and diagnose engagement.\ \textbf{Administrators} need coarse platform metrics.\ \textbf{Developers} need a migration-friendly DDL script (\texttt{ddl.sql}) reproducible across environments.
-
-\section{Functional Requirements (Traceable)}
-Table~\ref{tab:funcreq} maps requirements to artefacts.
-
-\begin{table}[htbp]
-\centering
-\caption{Functional requirements mapped to tables}
-\label{tab:funcreq}
-\small
-\begin{tabular}{@{}p{8cm}l@{}}
-\toprule
-\textbf{Requirement} & \textbf{Primary relations} \\
-\midrule
-R1: Identify users distinctly with profiles & \texttt{users}, \texttt{instructors} \\
-R2: Own courses \& soft-retire \& publish & \texttt{courses}, \texttt{instructors} \\
-R3: Ordered typed media items inside course & \texttt{content}, \texttt{content\_types} \\
-R4: Enrol with lifecycle status & \texttt{enrollments}, \texttt{enrollment\_statuses} \\
-R5: Discrete learning events \& watch seconds & \texttt{activity\_log}, \texttt{activity\_types} \\
-R6: Completion percentage per learner per item & \texttt{content\_progress} \\
-R7: Assessments \& objective scoring artefacts & \texttt{quiz}\ldots\texttt{quiz\_answers} \\
-R8: Derived analytics exposure & Materialized views; controller queries \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\section{Non-Functional Requirements}
-\begin{itemize}[leftmargin=*]
-  \item \textbf{Integrity}: no dangling enrollments referencing missing users or courses ($\Rightarrow$ FKs).
-  \item \textbf{Idempotency of business rule}: duplicated POST enrollment rejected by UNIQUE constraint regardless of concurrency at application level.
-  \item \textbf{Performance}: dashboards should favour reading prejoined aggregates (materialized snapshots) versus repeated six-way joins live.
-  \item \textbf{Maintainability}: column comments (\texttt{COMMENT ON}) annotate intent (e.g.\ UUID derivation).
-\end{itemize}
-
-%----------------------------------------------------------------------
-\chapter{Conceptual Database Design}
-\label{ch:conceptual}
-
-\section{Core Narrative Model}
-\textbf{Teaching graph:}\ A person with instructor capability owns \textit{courses}.\ Each course contains ordered \textit{content} bricks typed as video/document/quiz-marker.
-
-\textbf{Learning graph:}\ A student obtains an \textit{enrollment}, producing a permission to interact with rows tied to that \texttt{course\_id}.
-
-\textbf{Observability graph:}\ Interactions explode into \textit{activity\_log} rows (fine grain) and/or upserts into \textit{content\_progress} (coarse longitudinal).
-
-\textbf{Assessment graph:}\ A course offers \textit{quizzes}; each splits into \textit{questions} \& \textit{options}. A student's \textit{attempt} attaches many \textit{answers}.
-
-\section{Cardinality Reference}
-\begin{center}
-\begin{tabular}{@{}lll@{}}
-\toprule
-\textbf{Parent} & \textbf{Child} & \textbf{Cardinality} \\
-\midrule
-users & instructors & 1 : 0..1 \\
-instructors & courses & 1 : N \\
-users \& courses & enrollments & M : N resolved table \\
-courses & content & 1 : N \\
-users \& content & activity\_log & 1 : N events \\
-users \& content & content\_progress & 1 : 0..1 (unique pair) \\
-courses & quiz & 1 : N \\
-quiz & quiz\_questions & 1 : N \\
-quiz\_questions & question\_options & 1 : N \\
-users \& quiz & quiz\_attempts & 1 : N \\
-quiz\_attempts & quiz\_answers & 1 : N \\
-\bottomrule
-\end{tabular}
-\end{center}
-
-\section{Identifier Strategy}
-\textbf{UUID} for persons (\texttt{users.user\_id}) minimises surrogate collision across federated signup.\ \textbf{SERIAL integers} minimise join width \& human debugging for inner domain artefacts (courses, questions).
-
-\section{Conceptual Entity--Relationship Diagram (ERD)}
-\label{sec:erd-fig}
-
-The \textbf{ERD} is a \textit{conceptual} view: named entity types, relationships, and cardinalities (\(1{:}1\), \(1{:}N\), \(M{:}N\) via associative entity), usually \textbf{without} listing every SQL column. Typical notation: rectangles (entities), diamonds or labelled edges (relationships), attributes as ovals or abbreviated notes. Your ERD should include at least: \texttt{users}, \texttt{instructors}, \texttt{courses}, \texttt{enrollments}, \texttt{content}, \texttt{activity\_log}, \texttt{content\_progress}, \texttt{quiz}, \texttt{quiz\_questions}, \texttt{question\_options}, \texttt{quiz\_attempts}, \texttt{quiz\_answers}, and lookup entities \texttt{activity\_types}, \texttt{content\_types}, \texttt{enrollment\_statuses}, \texttt{question\_types}.
-
-\textbf{How to insert your drawing:} export \texttt{figures/erd.pdf} or \texttt{figures/erd.png} from draw.io, Lucidchart, dbdiagram.io, or pgModeler. Then in this \texttt{.tex} file, replace the framed \textbf{placeholder box} below by uncommenting the \texttt{\textbackslash includegraphics} line (and remove or comment out the \texttt{\textbackslash fbox\{...\}} block).
-
-\begin{figure}[htbp]
-  \centering
-  % --------- Replace placeholder: uncomment ONE of the next two lines ---------
-  % \includegraphics[width=0.94\textwidth,height=0.55\textheight,keepaspectratio]{erd.pdf}
-  % \includegraphics[width=0.94\textwidth,height=0.55\textheight,keepaspectratio]{erd.png}
-  \fcolorbox{black!50}{black!2}{%
-    \parbox{0.92\textwidth}{%
-      \centering\vspace{3.2cm}
-      {\large\textbf{Placeholder: Conceptual ERD}}\\[1.2em]
-      \textit{Add file} \texttt{latex/figures/erd.pdf} \textit{or} \texttt{erd.png}\\[0.6em]
-      \small Entities + relationships + cardinalities (Chen / crow's foot / UML profile)
-      \vspace{3.2cm}
-    }%
-  }
-  \caption{\textbf{Conceptual ERD} for LearnTrack (entity types and relationships). Replace the placeholder with your exported diagram.}
-  \label{fig:erd}
-\end{figure}
-
-%----------------------------------------------------------------------
-\chapter{Logical Design and Normalisation}
-\label{ch:logical}
-
-\section{Reduction of Redundancy}
-String enumerations lifted to tables with synthetic keys avoids update anomalies: renaming ``active'' status updates one row instead of rewriting every enrollment tuple.
-
-\section{Functional Dependencies (Representative)}
-\begin{itemize}[leftmargin=*]
-  \item \texttt{user\_id} $\rightarrow$ current profile scalars (\texttt{email} unique enforced separately).
-  \item \texttt{course\_id} $\rightarrow$ \texttt{instructor\_id} (determines owner).
-  \item (\texttt{user\_id}, \texttt{course\_id}) $\rightarrow$ single enrollment surrogate \texttt{enrollment\_id} (enforced UNIQUE).
-\end{itemize}
-
-\section{Decomposition Benefit}
-Separate \texttt{quiz\_answers} avoids repeating attempt metadata inside each answer row-only foreign keys \& scores live at attempt granularity.
-
-\section{Referential Actions}
-\textbf{Cascade} deletes user-owned sessions/answers when account removed for privacy consistency.\ \textbf{Restrict} on enumerations avoids deleting a referenced status inadvertently.
-
-\section{Relational Data Model Diagram (RDM)}
-\label{sec:rdm-fig}
-
-The \textbf{RDM} (logical relational schema diagram) is the bridge between the ERD and physical DDL: each \textbf{relation} (table) appears as a named box listing \textbf{primary key} (underline or \texttt{PK}), \textbf{foreign keys} (\texttt{FK} $\rightarrow$ referenced table.column), and major non-key attributes. Relationships are shown as FK arrows or crow's feet from child to parent. Optionally group lookup tables on the margin. \textbf{Materialised views} (\texttt{mv\_*}) may appear as dashed boxes or in a separate ``analytics'' panel since they are derived, not base relations.
-
-\textbf{Insert your file} as \texttt{figures/rdm.pdf} or \texttt{figures/rdm.png}; then swap the placeholder below for \texttt{\textbackslash includegraphics} as with the ERD.
-
-\begin{figure}[htbp]
-  \centering
-  % --------- Replace placeholder: uncomment ONE of the next two lines ---------
-  % \includegraphics[width=0.98\textwidth,height=0.62\textheight,keepaspectratio]{rdm.pdf}
-  % \includegraphics[width=0.98\textwidth,height=0.62\textheight,keepaspectratio]{rdm.png}
-  \fcolorbox{black!50}{black!2}{%
-    \parbox{0.94\textwidth}{%
-      \centering\vspace{3.6cm}
-      {\large\textbf{Placeholder: Relational schema (RDM)}}\\[1.2em]
-      \textit{Add file} \texttt{latex/figures/rdm.pdf} \textit{or} \texttt{rdm.png}\\[0.6em]
-      \small Tables with PK/FK arrows; include lookup tables and quiz subgraph
-      \vspace{3.6cm}
-    }%
-  }
-  \caption{\textbf{Relational data model} for LearnTrack: tables, primary keys, and foreign-key references. Replace the placeholder with your exported diagram.}
-  \label{fig:rdm}
-\end{figure}
-
-%----------------------------------------------------------------------
-\chapter{Physical Design}
-\label{ch:physical}
-
-\section{Indexing Rationale}
-B-tree indexes accelerate:
-\begin{itemize}[leftmargin=*]
-  \item Instructor dashboard filters: \texttt{courses(instructor\_id)}, \texttt{enrollments(course\_id)}
-  \item Student timeline \& analytics windows: \texttt{activity\_log(event\_at DESC)}, \texttt{activity\_log(user\_id)}
-  \item Quiz reports: \texttt{quiz\_attempts(user\_id, quiz\_id)}
-\end{itemize}
-
-Partial indexing (where \texttt{courses.deleted\_at IS NULL}) shrinks scanned pages when listing catalogue.
-
-\section{Materialized Snapshot Indexes}
-Unique composite indexes enable potential \texttt{CONCURRENTLY} refreshes \& fast equality probes on summarized dimensions.
-
-\section{Data Type Justification}
-\begin{itemize}[leftmargin=*]
-  \item \textbf{TIMESTAMPTZ} prevents ambiguity across client timezones.
-  \item \textbf{NUMERIC(5,2)} yields stable decimal aggregates for percentages.
-\end{itemize}
-
-%----------------------------------------------------------------------
-\chapter{Relational Schema and Data Dictionary}
-\label{ch:dict}
-
-\section{Enumeration / Lookup Tables}
-\begin{description}[style=nextline]
-  \item[\texttt{activity\_types}]
-  Rows: play, pause, skip, seek, complete. PK \texttt{type\_id SERIAL}.
-  \item[\texttt{content\_types}]
-  video, document, quiz syllabus marker.
-  \item[\texttt{enrollment\_statuses}]
-  active, completed, dropped.
-  \item[\texttt{question\_types}]
-  mcq (multi-option), true\_false exactly two labelled options logically.
-\end{description}
-
-\section{Core Operational Tables}
-
-\noindent\textbf{users.}
-Primary key UUID \texttt{user\_id}. Columns include \texttt{full\_name}, unique \texttt{email}, hashed \texttt{password} mirror (auth may externalise passwords), constrained \texttt{role}, biography and avatar URLs, booleans \& soft-delete \texttt{deleted\_at}, audit timestamps.\ Indexing via PK and UNIQUE email.
-
-\vspace{0.5em}\noindent\textbf{instructors.}
-Surrogate PK \texttt{instructor\_id}; UNIQUE FK \texttt{user\_id}$\rightarrow$\texttt{users}. Optional department \& qualification meta.
-
-\vspace{0.5em}\noindent\textbf{courses.}
-\texttt{course\_id SERIAL} PK. FK \texttt{instructor\_id}$\rightarrow$\texttt{instructors}. Publication flag, soft-delete, metadata (title\ldots category). Indexed by instructor \& category \& partial published filter.
-
-\vspace{0.5em}\noindent\textbf{enrollments.}
-Bridge: (\texttt{user\_id}, \texttt{course\_id}) UNIQUE plus FK pairs. FK \texttt{status\_id} to statuses. Temporal \texttt{enrolled\_at}, \texttt{updated\_at}.
-
-\vspace{0.5em}\noindent\textbf{content.}
-Owned by course; FK to \texttt{content\_types}. Ordering \texttt{sort\_order}, optional media URIs \& body text, publish flag.
-
-\vspace{0.5em}\noindent\textbf{activity\_log.}
-Fact rows: FK user, FK content (hence implicitly course lineage), FK activity type; non-negative integer \texttt{watch\_time}, \texttt{event\_at}.
-
-\vspace{0.5em}\noindent\textbf{content\_progress.}
-Unique (\texttt{user\_id},\texttt{content\_id}); percentage WITH CHECK clamp; last watched timestamp upsert semantics in application logic.
-
-\section{Quiz Relations}
-\textbf{quiz} header (title, timers, threshold \texttt{pass\_score}).\ 
-\textbf{quiz\_questions} carry type \& points.\ 
-\textbf{question\_options} store distributive choices \& boolean correctness.\ 
-\textbf{quiz\_attempts} record score/pass timestamp per user \& quiz.\ 
-\textbf{quiz\_answers} granularity: (\texttt{attempt\_id},\texttt{question\_id}) unique $\Rightarrow$ prevents double answer rows per prompt.
-
-\section{Session Table}
-\textbf{user\_sessions} stores opaque token fingerprints (hashed token), logout \& expiry for optional session revocation analytics.
-
-\section{Materialized Views (Logical Columns)}
-\textbf{mv\_performance\_summary} keys (\texttt{user\_id},\texttt{course\_id}); metrics: summed watch seconds, average quiz scores, aggregated completion surrogate.
-
-\textbf{mv\_active\_students} ranks student engagement aggregates.
-
-\textbf{mv\_underperforming\_students} summarises quiz attempt averages \& counts attempts.
-
-\textbf{mv\_skipped\_content} aggregates skip events grouped by content.
-
-\textbf{mv\_completion\_rates} averages progress percent per enrollee per teaching unit.
-
-\section{Summary Table Inventory}
-Operational base tables counted: users, lookups (4), instructors, courses, enrollments, content, activity\_log, content\_progress, quiz + 4 quiz detail tables (questions, types options already counted), attempts, answers, sessions = seventeen primary narrative tables excluding views.
-
-%----------------------------------------------------------------------
-\chapter{Database Programming Artefacts}
-\label{ch:objs}
-
-\section{Procedural \& Trigger Logic}
-\textbf{Role guard trigger} on \texttt{instructors}: inserting profile only if mirrored \texttt{users.role} permissible.
-
-\textbf{Auto-provisioning trigger} inserts instructor row when upgrading role alleviates manual DDL seed mistakes.
-
-\textbf{Timestamp trigger} uniformly bumps \texttt{updated\_at} across mutable domain tables enumerated in DDL loop (\texttt{users}, \texttt{instructors}, \texttt{courses}, \texttt{enrollments}, \texttt{content}, \texttt{quiz}).
-
-\textbf{Auth synch function} inserts app-level user row referencing external identity creation.
-
-\textbf{Bulk refresh routine} sequentially refreshes all analytics materialised relations---invoked remotely by authenticated admin routes.
-
-\section{Illustrative Snippet --- Performance Summary Core Join Pattern}
-Listing~\ref{lst:perf} abstracts the pedagogical LEFT join fan-out pattern (identifiers simplified).
-
-\begin{lstlisting}[caption={Representative analytic join motif (conceptual excerpt)},label=lst:perf]
-SELECT e.user_id, e.course_id,
-       COALESCE(SUM(al.watch_time),0)     AS total_watch_sec,
-       COALESCE(AVG(qa.score)::NUMERIC,0)  AS avg_quiz_score,
-       COALESCE(AVG(cp.progress_percent)::NUMERIC,0) AS completion_pct
-FROM enrollments e
-LEFT JOIN content c    ON c.course_id = e.course_id
-LEFT JOIN activity_log al
-       ON al.content_id = c.content_id AND al.user_id = e.user_id
-LEFT JOIN content_progress cp
-       ON cp.content_id = c.content_id AND cp.user_id = e.user_id
-LEFT JOIN quiz q ON q.course_id = e.course_id
-LEFT JOIN quiz_attempts qa
-       ON qa.quiz_id = q.quiz_id AND qa.user_id = e.user_id
-GROUP BY e.user_id, e.course_id;
-\end{lstlisting}
-
-\textbf{Interpretation}: \texttt{LEFT JOIN} ensures an enrolled student-course pair remains even absent optional facts (never attempted quizzes, no logged events).\ Aggregates wrap null extended rows via \texttt{COALESCE}.
-
-%----------------------------------------------------------------------
-\chapter{Transactional Workflows \& API Mapping}
-\label{ch:tx}
-
-\section{Enrollment Transaction (Logical Steps)}
-\begin{enumerate}[leftmargin=*]
-  \item \texttt{SELECT} course ensuring \texttt{is\_published}=true \& not soft-deleted.
-  \item \texttt{SELECT} existing enrollment UNIQUE pair quick path conflict.
-  \item Resolve active \texttt{status\_id}.
-  \item \texttt{INSERT} enrollment tuple.
-\end{enumerate}
-
-\section{Quiz Submission}
-\begin{enumerate}[leftmargin=*]
-  \item Authorisation \& business checks (published quiz, active enrollment unless instructor preview).
-  \item Load question catalogue with options \& weighting points map.
-  \item Compute fractional score \& pass boolean vs header \texttt{pass\_score}.
-  \item \texttt{INSERT} attempt then batched answers.
-\end{enumerate}
-
-\section{Endpoint to Table Sketch}
-\texttt{POST /courses/:id/content} writes \texttt{content} after resolving FK \texttt{type\_id} lookup.
-
-\texttt{POST /activity} validates content existence then inserts activity row.
-
-\texttt{PUT /progress/:contentId} upserts incremental completion.
-
-\texttt{GET /analytics/active-students} may combine live filtered queries versus materialised view depending query window parameters coded in controllers.
-
-\section{Concurrency Note}
-Enrollment uniqueness closed at DB avoids TOCTOU gap between preliminary SELECT and INSERT under parallel requests.
-
-%----------------------------------------------------------------------
-\chapter{Queries, Joins \& Analytics Design}
-\label{ch:analytics}
-
-\section{Join Taxonomy Employed}
-\begin{description}[style=nextline]
-  \item[Inner join chains]
-    Example: deriving student roster with statuses requires matching enrollment \& user \& status rows (inner semantics natural).
-  \item[Left expansions]
-    Performance summarisation \& optional facts (quiz attempts absent still listed).
-\end{description}
-
-\section{Aggregation Caveats}
-One-to-many joins before grouping can inflate row counts incorrectly if metrics naively \texttt{COUNT(*)} versus distinct entities---controllers sometimes aggregate inside application loops or use relational COUNT DISTINCT equivalents.
-
-\section{Refresh Strategy \& Staleness}
-Materialized views are inherently \textbf{stale until refresh}; acceptable if dashboards tolerate minutes-level lag versus raw logs. Operational refresh triggers via RPC align batch cost to low-traffic windows.
-
-\section{Alternate Query Strategy}
-Date-scoped analytic endpoints bypass snapshots for correctness of interval filtering---engineering trade-off: freshness vs ingestion performance.
-
-%----------------------------------------------------------------------
-\chapter{Frontend Interaction (Data Perspective)}
-\label{ch:frontend}
-The browser never queries SQL directly:\ it requests JSON aggregations.\ Import of quiz question banks (\texttt{.json}) issues repeated \texttt{POST /quizzes/:id/questions}; each persists atomic question \& options illustrating repeated single-row transactions versus future bulk procedural loader.
-
-%----------------------------------------------------------------------
-\chapter{Implementation Quality \& Testing}
-\label{ch:qa}
-\textbf{Automated backend tests}: Jest + Supertest emulate HTTP lifecycles including auth \& analytics regressions housed under \texttt{backend/tests}.
-
-\textbf{Client tests}: Vitest + Testing Library for representative pages (\texttt{Login}, course lists exemplar).
-
-\textbf{Manual verification axes}: DDL apply on blank database; signup $\rightarrow$ instructorship promotion path; enrol $\rightarrow$ event $\rightarrow$ analytics refresh correctness.
-
-\textbf{Operational hygiene}: environment separation; excluding secrets from VCS (\texttt{.env} locally .gitignored).
-
-\textbf{Potential CI}: workflow matrix invoking install, lint, \& test suites on pull requests.
-
-%----------------------------------------------------------------------
-\chapter{Deployment Considerations}
-Production split typically hosts static SPA separately from long-lived Node API.\ Environment variables synchronize API base URLs (\texttt{VITE\_API\_URL}), CORS \texttt{CLIENT\_ORIGIN}, database credentials \& JWT signing secret.\ After schema rollout run sequence alignment if bulk seeded ids caused SERIAL skew.
-
-%----------------------------------------------------------------------
-\chapter{Limitations \& Extensions}
-\textbf{Stored procedures transactional boundary}: unify multi-step grading as single COMMIT atomic unit.
-
-\textbf{Formal audit}: supplementary append-only log table via triggers capturing old/new JSON diffs.
-
-\textbf{Export adapters}: PostgreSQL COPY or server-side CSV streaming for roster \& attempt matrix.
-
-\textbf{Partitioning horizon}: shard large \texttt{activity\_log} by month if volume crosses operational thresholds.
-
-%----------------------------------------------------------------------
-\chapter{Conclusion}
-LearnTrack furnishes an end-to-end illustration of marrying user-facing LMS behaviour with academically rigorous relational database construction: normalised enums, richly constrained bridges, granular facts, summaries materialised for pragmatic analytics retrieval, \& procedural adjuncts safeguarding structural consistency.\ The juxtaposition of transactional APIs and analytic snapshots exemplifies OLTP versus derived reporting patterns common in information systems curricula.\ Future iterations may deepen transactional encapsulation \& external reporting without eroding foundational schema clarity.
-
+% ---------- Body chapters (one file per chapter) ----------
+\input{chapters/01-introduction}
+\input{chapters/02-system-overview}
+\input{chapters/03-requirements}
+\input{chapters/04-conceptual-design}
+\input{chapters/05-logical-design}
+\input{chapters/06-physical-design}
+\input{chapters/07-data-dictionary}
+\input{chapters/08-database-objects}
+\input{chapters/09-transactions}
+\input{chapters/10-analytics}
+\input{chapters/11-workflows}
+\input{chapters/12-sql-patterns}
+\input{chapters/13-frontend}
+\input{chapters/14-qa-testing}
+\input{chapters/15-deployment}
+\input{chapters/16-conclusion}
+
+% ---------- Bibliography ----------
 \begin{thebibliography}{9}
 \bibitem{date}
-Date, C.J. \textit{Database Design \& Relational Theory: Normal Forms \& All That Jazz}. (Conceptual grounding for normal forms \& integrity).
+Date, C.J. \textit{Database Design \& Relational Theory: Normal Forms \& All That Jazz}. (Normal forms and integrity concepts.)
 \bibitem{elmasri}
-Elmasri \& Navathe. \textit{Fundamentals of Database Systems}. (ER \& SQL study patterns).
+Elmasri \& Navathe. \textit{Fundamentals of Database Systems}. (ER modelling and SQL patterns.)
 \bibitem{pg}
 PostgreSQL Global Development Group.\ \textit{PostgreSQL Documentation}.\ 
 \url{https://www.postgresql.org/docs/}
@@ -540,34 +125,6 @@ Supabase.\ \textit{Supabase Documentation}.\
 \url{https://supabase.com/docs}
 \end{thebibliography}
 
-\appendix
-
-\chapter{REST Resource Inventory (Prefix \texttt{/api/v1})}
-\begin{itemize}[leftmargin=*]
-  \item \textbf{health}: GET \texttt{/health}
-  \item \textbf{auth}: register/login/logout endpoints
-  \item \textbf{users}: profile \& admin listings as implemented
-  \item \textbf{courses}: catalogue, instructor mine, CRUD-ish, nested content \& student roster
-  \item \textbf{enrollments}: mine, enroll POST, status patch, delete admin
-  \item \textbf{activity/progress/quizzes}: authoring \& attempt submission
-  \item \textbf{analytics}: active students, underperforming, skipped content, completion, dashboards, MV refresh POST
-\end{itemize}
-
-\chapter{Mini Glossary}
-\begin{description}[style=nextline]
-  \item[Surrogate key] Synthetic identifier (SERIAL) independent of external business meaning timing.
-  \item[Natural key exposure] UUID aligned to auth identity simplifying cross-layer correlation.
-  \item[Soft delete] Logical removal flag avoids hard FK breakage while hiding entity in filtered queries.
-  \item[Materialized view] Persisted SELECT snapshot trading storage \& refresh for read latency.
-\end{description}
-
-\chapter{Repository File Map}
-\begin{itemize}[leftmargin=*]
-  \item \texttt{backend/src/db/ddl.sql} --- authoritative schema
-  \item \texttt{backend/src/db/seed.sql} --- optional population
-  \item \texttt{backend/src/db/connection.js} --- client bootstrap
-  \item \texttt{backend/src/controllers/*.js} --- SQL orchestration
-  \item \texttt{learntrack-client/src/api/index.js} --- HTTP client base path
-\end{itemize}
+\input{chapters/99-appendices}
 
 \end{document}

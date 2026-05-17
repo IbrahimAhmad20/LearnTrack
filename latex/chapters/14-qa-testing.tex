@@ -1,0 +1,39 @@
+% Chapter 14 — Implementation Quality and Testing
+
+\chapter{Implementation Quality \& Testing}
+\label{ch:qa}
+
+\section{Automated tests}
+The backend ships with Jest + Supertest-style tests covering authentication, courses, enrollments, quizzes, and analytics endpoints where implemented. Automated tests catch regressions when schema or controllers change.
+
+The frontend uses Vitest + Testing Library for representative UI flows (example: course list smoke tests). Tests do not replace manual QA but shorten feedback loops during assignment deadlines.
+
+\section{Manual verification matrix}
+Use Table~\ref{tab:manualqa} during demos. Replace Pass/Fail with your actual results.
+
+\begin{longtable}{@{}p{4.2cm}p{7.8cm}p{2.2cm}@{}}
+\caption{Manual verification checklist}\label{tab:manualqa}\\
+\toprule
+\textbf{Scenario} & \textbf{What ``good'' looks like} & \textbf{Result} \\
+\midrule
+Fresh \texttt{ddl.sql} run & All tables, indexes, views, triggers create without errors & Pass / Fail \\
+Create course + content & Rows appear in \texttt{courses} and \texttt{content}; FK chain valid & Pass / Fail \\
+Duplicate enrollment & Second enroll rejected or safely ignored per API contract & Pass / Fail \\
+Quiz submit & Score matches manual calculation from correct options & Pass / Fail \\
+Refresh analytics & Materialized views update after RPC / admin action & Pass / Fail \\
+Login / logout & Tokens invalidated appropriately; protected routes reject missing JWT & Pass / Fail \\
+\bottomrule
+\end{longtable}
+
+\section{Operational hygiene}
+\begin{itemize}[leftmargin=*]
+  \item Keep development and production credentials separate (\texttt{.env} never committed).
+
+  \item Log enough on the API to debug failing inserts without printing secrets.
+
+  \item Validate all mutating payloads (\texttt{express-validator}) so malformed JSON cannot crash controllers.
+
+\end{itemize}
+
+\section{Known coursework angle}
+Expect examiners to ask: ``What would you test next?'' Reasonable answers: load testing on \texttt{activity\_log}, backup/restore drill, stricter RLS policies if mobile clients hit Supabase directly.

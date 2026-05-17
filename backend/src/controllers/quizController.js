@@ -149,6 +149,7 @@ async function createQuiz(req, res, next) {
       pass_score = 50,
       allow_multiple = true,
       is_published = false,
+      content_id, // [F2] optional — links quiz to a content row for ordering
     } = req.body;
 
     const { data, error } = await supabase
@@ -160,6 +161,7 @@ async function createQuiz(req, res, next) {
         pass_score: Number(pass_score),
         allow_multiple: Boolean(allow_multiple),
         is_published: Boolean(is_published),
+        content_id: content_id ? Number(content_id) : null, // [F2]
       })
       .select("quiz_id")
       .single();
@@ -211,12 +213,10 @@ async function addQuestion(req, res, next) {
     // Validate that at least one option is marked correct
     const hasCorrect = options.some((o) => o.is_correct === true);
     if (!hasCorrect) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "At least one option must be marked as correct (is_correct: true)",
-        });
+      return res.status(400).json({
+        error:
+          "At least one option must be marked as correct (is_correct: true)",
+      });
     }
 
     // Validate true_false has exactly 2 options
@@ -338,7 +338,8 @@ async function listMyAttempts(req, res, next) {
 //   ]
 // }
 // The client sends the option_id the student selected.
-// Grading is done server-side by looking up is_correct on the option.
+// [F8] Score + passed are computed entirely by the DB trigger
+//      trg_compute_attempt_score — the app never calculates or supplies them.
 async function submitAttempt(req, res, next) {
   try {
     const quizId = Number(req.params.id);
@@ -347,9 +348,7 @@ async function submitAttempt(req, res, next) {
 
     const { data: quiz, error: quizErr } = await supabase
       .from("quiz")
-      .select(
-        "allow_multiple, pass_score, course_id, is_published",
-      )
+      .select("allow_multiple, pass_score, course_id, is_published")
       .eq("quiz_id", quizId)
       .single();
 
@@ -374,71 +373,53 @@ async function submitAttempt(req, res, next) {
           .json({ error: "Only one attempt allowed for this quiz" });
     }
 
-    // Fetch all questions with their correct options for this quiz
-    const { data: questions, error: qErr } = await supabase
-      .from("quiz_questions")
-      .select("question_id, points, question_options ( option_id, is_correct )")
-      .eq("quiz_id", quizId);
+    // Fetch question count + resolve is_correct for every submitted option.
+    // quiz_answers.is_correct is NOT NULL with no default — the trigger reads
+    // it to compute the score, so it must be supplied at insert time.
+    const submittedOptionIds = answers.map((a) => a.option_id).filter(Boolean);
+
+    const [{ data: questions, error: qErr }, { data: options, error: optErr }] =
+      await Promise.all([
+        supabase
+          .from("quiz_questions")
+          .select("question_id")
+          .eq("quiz_id", quizId),
+        submittedOptionIds.length > 0
+          ? supabase
+              .from("question_options")
+              .select("option_id, is_correct")
+              .in("option_id", submittedOptionIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
 
     if (qErr) throw new Error(qErr.message);
+    if (optErr) throw new Error(optErr.message);
 
-    // Build a lookup: option_id → is_correct
-    const optionCorrectMap = {};
-    // Build a lookup: question_id → points
-    const questionPointsMap = {};
+    // Build a fast lookup: option_id → is_correct
+    const correctMap = Object.fromEntries(
+      (options || []).map((o) => [o.option_id, o.is_correct]),
+    );
 
-    questions.forEach((q) => {
-      questionPointsMap[q.question_id] = Number(q.points);
-      (q.question_options || []).forEach((opt) => {
-        optionCorrectMap[opt.option_id] = opt.is_correct;
-      });
-    });
-
-    // Grade each submitted answer
-    let earnedPoints = 0;
-    let totalPoints = 0;
-    let correctCount = 0;
-
-    questions.forEach((q) => {
-      totalPoints += questionPointsMap[q.question_id];
-    });
-
-    const gradedAnswers = answers.map((a) => {
-      const isCorrect = optionCorrectMap[a.option_id] === true;
-      if (isCorrect) {
-        earnedPoints += questionPointsMap[a.question_id] || 1;
-        correctCount++;
-      }
-      return {
-        question_id: a.question_id,
-        option_id: a.option_id,
-        is_correct: isCorrect,
-      };
-    });
-
-    const score =
-      totalPoints > 0
-        ? Math.round((earnedPoints / totalPoints) * 10000) / 100
-        : 0;
-
-    const passed = score >= Number(quiz.pass_score);
-
-    // Insert the attempt record
+    // [F8] Step 1 — Insert the attempt with score=0 / passed=false as placeholders.
+    //      The DB trigger trg_compute_attempt_score will overwrite these after
+    //      quiz_answers rows are inserted below.
     const { data: attempt, error: attemptErr } = await supabase
       .from("quiz_attempts")
-      .insert({ user_id: userId, quiz_id: quizId, score, passed })
+      .insert({ user_id: userId, quiz_id: quizId, score: 0, passed: false })
       .select("attempt_id")
       .single();
 
     if (attemptErr) throw new Error(attemptErr.message);
 
-    // Store each individual answer for analytics / review
-    if (gradedAnswers.length > 0) {
-      const answerRows = gradedAnswers.map((a) => ({
+    // [F8] Step 2 — Insert answers with is_correct resolved from question_options.
+    //      Each INSERT fires trg_compute_attempt_score which recalculates
+    //      quiz_attempts.score + passed atomically.
+    if (answers.length > 0) {
+      const answerRows = answers.map((a) => ({
         attempt_id: attempt.attempt_id,
         question_id: a.question_id,
         option_id: a.option_id,
-        is_correct: a.is_correct,
+        is_correct: correctMap[a.option_id] ?? false,
       }));
 
       const { error: ansErr } = await supabase
@@ -448,12 +429,20 @@ async function submitAttempt(req, res, next) {
       if (ansErr) throw new Error(ansErr.message);
     }
 
+    // [F8] Step 3 — Read back the DB-computed score and passed values.
+    const { data: finalAttempt, error: readErr } = await supabase
+      .from("quiz_attempts")
+      .select("attempt_id, score, passed")
+      .eq("attempt_id", attempt.attempt_id)
+      .single();
+
+    if (readErr) throw new Error(readErr.message);
+
     res.status(201).json({
-      attempt_id: attempt.attempt_id,
-      score,
-      passed,
-      correct_count: correctCount,
-      total_questions: questions.length,
+      attempt_id: finalAttempt.attempt_id,
+      score: finalAttempt.score,
+      passed: finalAttempt.passed,
+      total_questions: (questions || []).length,
     });
   } catch (err) {
     next(err);
@@ -524,6 +513,7 @@ async function updateQuiz(req, res, next) {
       allow_multiple,
       time_limit_min,
       is_published,
+      content_id, // [F2] optional — links/unlinks quiz from a content row
     } = req.body;
 
     if (title !== undefined) updates.title = title;
@@ -537,6 +527,9 @@ async function updateQuiz(req, res, next) {
           : Number(time_limit_min);
     if (is_published !== undefined)
       updates.is_published = Boolean(is_published);
+    if (content_id !== undefined)
+      // [F2]
+      updates.content_id = content_id === null ? null : Number(content_id);
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: "No fields to update" });

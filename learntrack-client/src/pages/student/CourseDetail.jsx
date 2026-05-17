@@ -5,16 +5,67 @@ import {
   enrollments as enrollmentsApi,
   progress as progressApi,
   activity as activityApi,
+  sections as sectionsApi,
+  reviews as reviewsApi,
 } from "../../api";
+import api from "../../api";
 import { ProgressBar, Spinner, Badge } from "../../components/ui";
+import SectionAccordion from "../../components/SectionAccordion";
+import ReviewModal from "../../components/ReviewModal";
+import StarRating from "../../components/StarRating";
+
+function InitialsAvatar({ name = "", size = 32 }) {
+  const initials = name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: "var(--accent-dim)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--accent-text)",
+        fontSize: size * 0.35,
+        fontWeight: 600,
+        fontFamily: "DM Mono, monospace",
+        flexShrink: 0,
+      }}
+    >
+      {initials || "?"}
+    </div>
+  );
+}
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export default function CourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [course, setCourse] = useState(null);
   const [progress, setProgress] = useState(null);
+  const [sections, setSections] = useState([]);
+  const [progressMap, setProgressMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeContent, setActiveContent] = useState(null);
+
+  // Reviews state
+  const [reviewSummary, setReviewSummary] = useState(null);
+  const [courseReviews, setCourseReviews] = useState([]);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+
   const ytContainerRef = useRef(null);
   const ytPlayerRef = useRef(null);
   const watchIntervalRef = useRef(null);
@@ -22,17 +73,59 @@ export default function CourseDetail() {
   const completedRef = useRef(false);
 
   useEffect(() => {
-    Promise.all([coursesApi.get(id), enrollmentsApi.progress(id)])
-      .then(([c, p]) => {
-        setCourse(c.data);
-        setProgress(p.data);
-        setActiveContent((c.data.content || [])[0] || null);
-      })
-      .catch(() => navigate("/student/courses"))
+    Promise.allSettled([
+      coursesApi.get(id),
+      enrollmentsApi.progress(id),
+      sectionsApi.byCourse(id),
+      reviewsApi.summary(id),
+      reviewsApi.list(id, { page: 1, limit: 5 }),
+      api.get("/progress/me"),
+    ])
+      .then(
+        ([
+          courseRes,
+          progressRes,
+          sectionsRes,
+          summaryRes,
+          reviewsRes,
+          allProgressRes,
+        ]) => {
+          if (courseRes.status === "fulfilled") {
+            setCourse(courseRes.value.data);
+            setActiveContent((courseRes.value.data.content || [])[0] || null);
+          } else {
+            navigate("/student/courses");
+            return;
+          }
+          if (progressRes.status === "fulfilled")
+            setProgress(progressRes.value.data);
+          if (sectionsRes.status === "fulfilled")
+            setSections(sectionsRes.value.data || []);
+          if (summaryRes.status === "fulfilled")
+            setReviewSummary(summaryRes.value.data);
+          if (reviewsRes.status === "fulfilled")
+            setCourseReviews(reviewsRes.value.data?.reviews || []);
+
+          // Build per-content progress map
+          if (allProgressRes.status === "fulfilled") {
+            const allProg = allProgressRes.value.data || [];
+            const courseContent = courseRes.value.data?.content || [];
+            const contentIds = new Set(courseContent.map((c) => c.content_id));
+            const map = {};
+            allProg.forEach((p) => {
+              if (contentIds.has(p.content_id)) {
+                map[p.content_id] = p.progress_pct ?? p.progress_percent ?? 0;
+              }
+            });
+            setProgressMap(map);
+          }
+        },
+      )
       .finally(() => setLoading(false));
   }, [id]);
 
   const content = course?.content || [];
+
   const isYoutube = useMemo(() => {
     const url = activeContent?.content_url || "";
     return /youtube\.com|youtu\.be/.test(url);
@@ -58,13 +151,18 @@ export default function CourseDetail() {
 
   const pushProgress = async (contentId, currentSec, durationSec) => {
     if (!durationSec || !contentId) return;
-    const percent = Math.max(0, Math.min(100, Math.round((currentSec / durationSec) * 100)));
+    const percent = Math.max(
+      0,
+      Math.min(100, Math.round((currentSec / durationSec) * 100)),
+    );
     if (percent >= lastPercentRef.current + 3 || percent === 100) {
       lastPercentRef.current = percent;
       progressApi.update(contentId, percent).catch(() => {});
       if (percent >= 95 && !completedRef.current) {
         completedRef.current = true;
-        activityApi.log(contentId, "complete", Math.round(currentSec)).catch(() => {});
+        activityApi
+          .log(contentId, "complete", Math.round(currentSec))
+          .catch(() => {});
       }
     }
   };
@@ -73,7 +171,12 @@ export default function CourseDetail() {
     stopTracking();
     completedRef.current = false;
     lastPercentRef.current = 0;
-    if (!activeContent?.content_id || !isYoutube || !youtubeId || !ytContainerRef.current)
+    if (
+      !activeContent?.content_id ||
+      !isYoutube ||
+      !youtubeId ||
+      !ytContainerRef.current
+    )
       return;
 
     const setup = () => {
@@ -86,7 +189,11 @@ export default function CourseDetail() {
             if (!YT || !ytPlayerRef.current) return;
             if (event.data === YT.PlayerState.PLAYING) {
               activityApi
-                .log(activeContent.content_id, "play", Math.round(ytPlayerRef.current.getCurrentTime()))
+                .log(
+                  activeContent.content_id,
+                  "play",
+                  Math.round(ytPlayerRef.current.getCurrentTime()),
+                )
                 .catch(() => {});
               stopTracking();
               watchIntervalRef.current = window.setInterval(() => {
@@ -96,12 +203,20 @@ export default function CourseDetail() {
               }, 8000);
             } else if (event.data === YT.PlayerState.PAUSED) {
               activityApi
-                .log(activeContent.content_id, "pause", Math.round(ytPlayerRef.current.getCurrentTime()))
+                .log(
+                  activeContent.content_id,
+                  "pause",
+                  Math.round(ytPlayerRef.current.getCurrentTime()),
+                )
                 .catch(() => {});
               stopTracking();
             } else if (event.data === YT.PlayerState.ENDED) {
               stopTracking();
-              pushProgress(activeContent.content_id, ytPlayerRef.current.getDuration(), ytPlayerRef.current.getDuration());
+              pushProgress(
+                activeContent.content_id,
+                ytPlayerRef.current.getDuration(),
+                ytPlayerRef.current.getDuration(),
+              );
             }
           },
         },
@@ -127,6 +242,14 @@ export default function CourseDetail() {
       ytPlayerRef.current = null;
     };
   }, [activeContent, isYoutube, youtubeId]);
+
+  const isEnrolled = !!progress;
+  const progressPct = progress?.progress_pct || 0;
+  const canReview = isEnrolled && progressPct >= 95;
+
+  const histogramTotal = reviewSummary
+    ? Object.values(reviewSummary.distribution || {}).reduce((s, v) => s + v, 0)
+    : 0;
 
   if (loading)
     return (
@@ -206,6 +329,7 @@ export default function CourseDetail() {
         </h2>
       </div>
 
+      {/* Section Accordion */}
       <div className="card overflow-hidden mb-6">
         {content.length === 0 ? (
           <div
@@ -215,72 +339,19 @@ export default function CourseDetail() {
             No content added yet.
           </div>
         ) : (
-          content.map((item, i) => (
-            <button
-              key={item.content_id}
-              onClick={() => setActiveContent(item)}
-              className="flex items-center gap-4 px-5 py-3.5 w-full text-left"
-              style={{
-                background:
-                  activeContent?.content_id === item.content_id
-                    ? "var(--bg-hover)"
-                    : "transparent",
-                borderBottom:
-                  i < content.length - 1 ? "1px solid var(--border)" : "none",
-              }}
-            >
-              <span
-                className="text-xs"
-                style={{
-                  color: "var(--text-muted)",
-                  fontFamily: "DM Mono, monospace",
-                  minWidth: 24,
-                }}
-              >
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p
-                  className="text-sm truncate"
-                  style={{ color: "var(--text-primary)" }}
-                >
-                  {item.title}
-                </p>
-                {item.content_type && (
-                  <p
-                    className="text-xs mt-0.5"
-                    style={{
-                      color: "var(--text-muted)",
-                      fontFamily: "DM Mono, monospace",
-                    }}
-                  >
-                    {item.content_types?.type_name || item.content_type}
-                  </p>
-                )}
-                {item.content_url ? (
-                  <a
-                    href={item.content_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs mt-1 inline-block hover:underline"
-                    style={{ color: "var(--accent-text)" }}
-                  >
-                    Open lesson resource
-                  </a>
-                ) : null}
-                {item.content_body ? (
-                  <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
-                    {item.content_body}
-                  </p>
-                ) : null}
-              </div>
-            </button>
-          ))
+          <SectionAccordion
+            sections={sections}
+            flatContent={content}
+            activeId={activeContent?.content_id}
+            onSelect={(item) => setActiveContent(item)}
+            progressMap={progressMap}
+          />
         )}
       </div>
 
+      {/* Video player */}
       {activeContent?.content_url ? (
-        <div className="card p-4">
+        <div className="card p-4 mb-6">
           <h3 className="text-sm font-medium mb-3">{activeContent.title}</h3>
           {isYoutube && youtubeId ? (
             <div
@@ -294,10 +365,22 @@ export default function CourseDetail() {
               src={activeContent.content_url}
               className="w-full rounded"
               onPlay={(e) =>
-                activityApi.log(activeContent.content_id, "play", Math.round(e.currentTarget.currentTime)).catch(() => {})
+                activityApi
+                  .log(
+                    activeContent.content_id,
+                    "play",
+                    Math.round(e.currentTarget.currentTime),
+                  )
+                  .catch(() => {})
               }
               onPause={(e) =>
-                activityApi.log(activeContent.content_id, "pause", Math.round(e.currentTarget.currentTime)).catch(() => {})
+                activityApi
+                  .log(
+                    activeContent.content_id,
+                    "pause",
+                    Math.round(e.currentTarget.currentTime),
+                  )
+                  .catch(() => {})
               }
               onTimeUpdate={(e) =>
                 pushProgress(
@@ -326,6 +409,176 @@ export default function CourseDetail() {
           )}
         </div>
       ) : null}
+
+      {/* Reviews section */}
+      <div className="mb-3 flex items-center justify-between">
+        <h2
+          className="text-xs uppercase tracking-widest"
+          style={{
+            color: "var(--text-muted)",
+            fontFamily: "DM Mono, monospace",
+          }}
+        >
+          Reviews
+        </h2>
+        {canReview && (
+          <button
+            onClick={() => setShowReviewModal(true)}
+            className="btn-ghost"
+            style={{ fontSize: 12 }}
+          >
+            Write a review
+          </button>
+        )}
+      </div>
+
+      <div className="card p-5 mb-6">
+        {reviewSummary ? (
+          <>
+            {/* Summary row */}
+            <div className="flex items-center gap-4 mb-5">
+              <span
+                className="font-display text-3xl"
+                style={{
+                  color: "var(--accent-text)",
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                ★ {Number(reviewSummary.avg_rating || 0).toFixed(1)}
+              </span>
+              <span className="text-sm" style={{ color: "var(--text-muted)" }}>
+                {reviewSummary.review_count || 0} review
+                {reviewSummary.review_count !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            {/* Histogram */}
+            {reviewSummary.distribution && (
+              <div className="flex flex-col gap-2 mb-6">
+                {[5, 4, 3, 2, 1].map((star) => {
+                  const count = reviewSummary.distribution[star] || 0;
+                  const barPct = histogramTotal
+                    ? (count / histogramTotal) * 100
+                    : 0;
+                  return (
+                    <div
+                      key={star}
+                      className="flex items-center gap-3"
+                      style={{ fontSize: 12 }}
+                    >
+                      <span
+                        style={{
+                          color: "var(--text-muted)",
+                          fontFamily: "DM Mono, monospace",
+                          width: 20,
+                          textAlign: "right",
+                        }}
+                      >
+                        {star}★
+                      </span>
+                      <div className="flex-1 relative" style={{ height: 6 }}>
+                        <div
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            background: "var(--bg-raised)",
+                            borderRadius: 99,
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            height: "100%",
+                            width: `${barPct}%`,
+                            background: "var(--accent)",
+                            borderRadius: 99,
+                          }}
+                        />
+                      </div>
+                      <span
+                        style={{
+                          color: "var(--text-muted)",
+                          fontFamily: "DM Mono, monospace",
+                          width: 28,
+                        }}
+                      >
+                        {count}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm mb-5" style={{ color: "var(--text-muted)" }}>
+            No reviews yet.
+          </p>
+        )}
+
+        {/* Review cards */}
+        {courseReviews.length > 0 && (
+          <div className="flex flex-col gap-4">
+            {courseReviews.slice(0, 5).map((review) => (
+              <div
+                key={review.review_id}
+                style={{ paddingTop: 16, borderTop: "1px solid var(--border)" }}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <InitialsAvatar name={review.users?.full_name} size={28} />
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    {review.users?.full_name || "Student"}
+                  </span>
+                  <StarRating value={review.rating} size={13} />
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      color: "var(--text-muted)",
+                      fontFamily: "DM Mono, monospace",
+                      fontSize: 11,
+                    }}
+                  >
+                    {formatDate(review.created_at)}
+                  </span>
+                </div>
+                {review.body && (
+                  <p
+                    className="text-sm"
+                    style={{ color: "var(--text-secondary)" }}
+                  >
+                    {review.body}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showReviewModal && (
+        <ReviewModal
+          courseId={id}
+          onClose={() => setShowReviewModal(false)}
+          onSuccess={() => {
+            setShowReviewModal(false);
+            // Refresh reviews
+            Promise.all([
+              reviewsApi.summary(id),
+              reviewsApi.list(id, { page: 1, limit: 5 }),
+            ])
+              .then(([s, r]) => {
+                setReviewSummary(s.data);
+                setCourseReviews(r.data?.reviews || []);
+              })
+              .catch(() => {});
+          }}
+        />
+      )}
     </div>
   );
 }

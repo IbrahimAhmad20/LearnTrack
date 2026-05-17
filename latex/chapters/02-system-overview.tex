@@ -1,0 +1,85 @@
+% Chapter 2 — System Overview
+
+\chapter{System Overview}
+\label{ch:overview}
+
+\section{One-page summary}
+Table~\ref{tab:onepage} gives a quick snapshot anyone can read before the technical sections.
+
+\begin{table}[htbp]
+\centering
+\caption{LearnTrack at a glance}
+\label{tab:onepage}
+\begin{tabular}{@{}p{3.2cm}p{9.6cm}@{}}
+\toprule
+\textbf{Topic} & \textbf{Plain explanation} \\
+\midrule
+Who uses it? & Students learn; instructors create courses and view analytics; admins manage users and platform stats. \\
+Where does data live? & All lasting data is in \textbf{PostgreSQL} on \textbf{Supabase}. The React app never touches the database directly. \\
+How does the app talk to the DB? & The \textbf{Express} backend uses the official Supabase JavaScript client (\texttt{supabase.from(...)}, \texttt{.rpc(...)}). \\
+How do we know who is logged in? & After login, the client sends a \textbf{JWT} (Bearer token). The API checks the token and the user's \textbf{role} before running handlers. \\
+How do dashboards stay fast? & Heavy ``join everything'' reports read from \textbf{materialized views} (\texttt{mv\_*}) that we refresh on a schedule or via an admin action. \\
+Where is it hosted? & Typical setup: frontend on \textbf{Vercel}, API on \textbf{Render}, database on \textbf{Supabase}. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Three layers (simple view)}
+Imagine a stack:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Top — React (Vite).} Buttons, forms, charts. Sends HTTPS requests with JSON bodies.
+  \item \textbf{Middle — Express API.} Validates input, checks JWT and role, runs the right sequence of database calls.
+  \item \textbf{Bottom — PostgreSQL.} Stores rows, enforces constraints, runs triggers and refresh commands for views.
+\end{enumerate}
+
+Nothing else is ``magic'': if the UI shows ``15 enrollments,'' that number came from a \texttt{SELECT} or \texttt{COUNT} the API ran moments ago.
+
+\begin{table}[htbp]
+\centering
+\caption{Layers and technologies}
+\label{tab:layers}
+\begin{tabular}{@{}llp{6.8cm}@{}}
+\toprule
+\textbf{Layer} & \textbf{Technology} & \textbf{What it does} \\
+\midrule
+Presentation & React + Vite + React Router &
+Shows different pages for student, instructor, and admin. Uses Axios with a stored token. \\
+Application & Express.js &
+Defines routes under \texttt{/api/v1}; verifies JWT; validates forms (\texttt{express-validator}). \\
+Database access & Supabase JS client &
+Builds queries without raw SQL strings in most controllers; calls PostgreSQL functions when needed. \\
+Storage & PostgreSQL &
+Stores tables, indexes, triggers, and materialized views; guarantees ACID transactions. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{API layout}
+Every REST path starts with \texttt{/api/v1}. Examples students and instructors actually hit:
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Auth:} register, login, logout (\texttt{/auth/...}).
+  \item \textbf{Courses:} list published courses, get one course with lessons and quizzes, instructor ``my courses,'' create/update content (\texttt{/courses/...}).
+  \item \textbf{Enrollments:} join a course, see my enrollments (\texttt{/enrollments/...}).
+  \item \textbf{Learning signals:} log activity (\texttt{/activity}), update progress (\texttt{/progress/...}).
+  \item \textbf{Quizzes:} create quizzes (instructor), submit attempts (student) (\texttt{/quizzes/...}).
+  \item \textbf{Analytics:} active students, completion, skipped lessons, underperforming learners, dashboards (\texttt{/analytics/...}).
+\end{itemize}
+
+\section{Roles in plain English}
+\begin{description}[style=nextline]
+  \item[Student]
+  Browses published courses, enrolls, watches lessons, sends progress updates, takes quizzes. Cannot edit other people's courses.
+
+  \item[Instructor]
+  Owns courses through the chain \texttt{users} $\rightarrow$ \texttt{instructors} $\rightarrow$ \texttt{courses}. Creates lessons and quizzes. Analytics only show data for \textbf{their} course IDs.
+
+  \item[Admin]
+  Can manage users and platform-wide views (depending on implemented routes). Sees aggregate analytics across the whole site where the API allows it.
+\end{description}
+
+\section{Security model (how this report describes it)}
+This report treats security as \textbf{application-level}: JWT verification, role checks in Express, and queries filtered by owner or enrollment.
+
+The SQL script also defines \textbf{Row Level Security} policies for direct Supabase clients, but the main coursework story here is: \textit{the Node API uses the service role and implements rules in code}. That matches how most routes are written in the project controllers.
