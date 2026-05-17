@@ -16,7 +16,7 @@ router.get(
   "/course/:courseId",
   param("courseId").isInt({ min: 1 }),
   query("page").optional().isInt({ min: 1 }),
-  query("limit").optional().isInt({ min: 1, max: 50 }),
+  query("limit").optional().isInt({ min: 1, max: 200 }),
   validate,
   getReviewsByCourse,
 );
