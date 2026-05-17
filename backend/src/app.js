@@ -28,10 +28,11 @@ const app = express();
 app.use(helmet());
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
-// /transactions/callback is called by Safepay's servers (POST after payment).
-// It must accept requests from any origin. Register it BEFORE the restrictive
-// global CORS middleware so Safepay's POST isn't blocked.
+// /transactions/callback and /transactions/webhook are called by Safepay's
+// servers (no browser CORS involved, but helmet can block). Register open cors
+// on both BEFORE the restrictive global CORS middleware.
 app.use("/api/v1/transactions/callback", cors());
+app.use("/api/v1/transactions/webhook", cors());
 
 app.use(
   cors({

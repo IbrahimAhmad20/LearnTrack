@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import {
   courses as coursesApi,
   enrollments as enrollmentsApi,
@@ -55,6 +56,7 @@ function formatDate(iso) {
 export default function CourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const [course, setCourse] = useState(null);
   const [progress, setProgress] = useState(null);
   const [sections, setSections] = useState([]);
@@ -66,6 +68,7 @@ export default function CourseDetail() {
   const [reviewSummary, setReviewSummary] = useState(null);
   const [courseReviews, setCourseReviews] = useState([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [myReview, setMyReview] = useState(null); // student's own review if posted
 
   const ytContainerRef = useRef(null);
   const ytPlayerRef = useRef(null);
@@ -79,7 +82,7 @@ export default function CourseDetail() {
       enrollmentsApi.progress(id),
       sectionsApi.byCourse(id),
       reviewsApi.summary(id),
-      reviewsApi.list(id, { page: 1, limit: 5 }),
+      reviewsApi.list(id, { page: 1, limit: 20 }),
       api.get("/progress/me"),
     ])
       .then(
@@ -104,8 +107,17 @@ export default function CourseDetail() {
             setSections(sectionsRes.value.data || []);
           if (summaryRes.status === "fulfilled")
             setReviewSummary(summaryRes.value.data);
-          if (reviewsRes.status === "fulfilled")
-            setCourseReviews(reviewsRes.value.data?.reviews || []);
+          if (reviewsRes.status === "fulfilled") {
+            const allReviews = reviewsRes.value.data?.reviews || [];
+            setCourseReviews(allReviews);
+            // Detect if this student already left a review
+            if (currentUser?.user_id) {
+              const mine = allReviews.find(
+                (r) => r.users?.user_id === currentUser.user_id,
+              );
+              if (mine) setMyReview(mine);
+            }
+          }
 
           // Build per-content progress map
           if (allProgressRes.status === "fulfilled") {
@@ -246,7 +258,9 @@ export default function CourseDetail() {
 
   const isEnrolled = !!progress;
   const progressPct = progress?.progress_pct || 0;
-  const canReview = isEnrolled && progressPct >= 95;
+  // Allow review once enrolled (any progress). Previously required 95% which
+  // locked out most students who hadn't finished the course.
+  const canReview = isEnrolled;
 
   // ── Payment ──────────────────────────────────────────────────────────────
   const [buying, setBuying] = useState(false);
@@ -509,13 +523,13 @@ export default function CourseDetail() {
             className="btn-ghost"
             style={{ fontSize: 12 }}
           >
-            Write a review
+            {myReview ? "Edit your review" : "Write a review"}
           </button>
         )}
       </div>
 
       <div className="card p-5 mb-6">
-        {reviewSummary ? (
+        {reviewSummary && reviewSummary.review_count > 0 ? (
           <>
             {/* Summary row */}
             <div className="flex items-center gap-4 mb-5">
@@ -596,7 +610,9 @@ export default function CourseDetail() {
           </>
         ) : (
           <p className="text-sm mb-5" style={{ color: "var(--text-muted)" }}>
-            No reviews yet.
+            {isEnrolled
+              ? "No reviews yet. Be the first to review this course!"
+              : "No reviews yet."}
           </p>
         )}
 
@@ -608,7 +624,7 @@ export default function CourseDetail() {
                 key={review.review_id}
                 style={{ paddingTop: 16, borderTop: "1px solid var(--border)" }}
               >
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <InitialsAvatar name={review.users?.full_name} size={28} />
                   <span
                     className="text-sm font-medium"
@@ -617,6 +633,20 @@ export default function CourseDetail() {
                     {review.users?.full_name || "Student"}
                   </span>
                   <StarRating value={review.rating} size={13} />
+                  {myReview?.review_id === review.review_id && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        background: "var(--accent-dim)",
+                        color: "var(--accent-text)",
+                        fontFamily: "DM Mono, monospace",
+                      }}
+                    >
+                      your review
+                    </span>
+                  )}
                   <span
                     style={{
                       marginLeft: "auto",
@@ -645,17 +675,28 @@ export default function CourseDetail() {
       {showReviewModal && (
         <ReviewModal
           courseId={id}
+          courseTitle={course?.title}
+          existing={myReview}
           onClose={() => setShowReviewModal(false)}
-          onSuccess={() => {
+          onSubmit={({ rating, body }) => {
             setShowReviewModal(false);
-            // Refresh reviews
+            // Refresh summary + list, and update myReview
             Promise.all([
               reviewsApi.summary(id),
-              reviewsApi.list(id, { page: 1, limit: 5 }),
+              reviewsApi.list(id, { page: 1, limit: 10 }),
             ])
               .then(([s, r]) => {
                 setReviewSummary(s.data);
-                setCourseReviews(r.data?.reviews || []);
+                const reviews = r.data?.reviews || [];
+                setCourseReviews(reviews);
+                // Try to find own review in the refreshed list
+                // (ReviewModal just submitted so it will be there)
+                const posted = reviews.find((rv) =>
+                  myReview
+                    ? rv.review_id === myReview.review_id
+                    : rv.rating === rating && rv.body === (body || null),
+                );
+                if (posted) setMyReview(posted);
               })
               .catch(() => {});
           }}

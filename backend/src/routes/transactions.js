@@ -1,8 +1,10 @@
 const router = require("express").Router();
+const express = require("express");
 const { body, param, query } = require("express-validator");
 const {
   initiateTransaction,
   handleCallback,
+  handleWebhook,
   checkTransactionStatus,
   verifyTransaction,
   getMyTransactions,
@@ -13,8 +15,14 @@ const {
 const { verifyToken, requireRole } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
 
-// POST /api/v1/transactions/callback  — PUBLIC, no JWT
-// Safepay POSTs here after payment. Must be BEFORE router.use(verifyToken).
+// POST /api/v1/transactions/webhook  — PUBLIC, server-to-server from Safepay
+// Register in Safepay Dashboard → Developers → Webhooks
+// URL: https://learntrack-backend-33uq.onrender.com/api/v1/transactions/webhook
+router.post("/webhook", handleWebhook);
+
+// POST /api/v1/transactions/callback  — PUBLIC, browser redirect from Safepay
+// Safepay POSTs here after the user completes payment in the browser.
+// Must be BEFORE router.use(verifyToken).
 router.post("/callback", handleCallback);
 
 router.use(verifyToken);

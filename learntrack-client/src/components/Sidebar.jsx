@@ -67,6 +67,7 @@ const NAV = {
     { to: "/admin", label: "Overview", icon: "⬡", end: true },
     { to: "/admin/users", label: "Users", icon: "◉" },
     { to: "/admin/courses", label: "Courses", icon: "▦" },
+    { to: "/admin/reviews", label: "Reviews", icon: "★" },
     { to: "/admin/analytics", label: "Analytics", icon: "◈" },
   ],
 };

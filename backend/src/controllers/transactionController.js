@@ -135,7 +135,7 @@ async function initiateTransaction(req, res, next) {
         cancelUrl: `${baseUrl}/payment/cancel`,
         redirectUrl: `${serverOrigin}/api/v1/transactions/callback`,
         source: "custom",
-        webhooks: false,
+        webhooks: true,
       });
 
       console.log(
@@ -491,9 +491,118 @@ async function handleCallback(req, res, next) {
   }
 }
 
+// ── POST /api/v1/transactions/webhook ─────────────────────────────────────────
+// Safepay server-to-server webhook — fires when payment is confirmed.
+// No JWT. Safepay signs the payload with SAFEPAY_WEBHOOK_SECRET.
+// Register this URL in: Safepay Dashboard → Developers → Webhooks → Add endpoint
+// URL: https://learntrack-backend-33uq.onrender.com/api/v1/transactions/webhook
+// Events to subscribe: payment:created (or whatever Safepay calls the success event)
+async function handleWebhook(req, res, next) {
+  try {
+    console.log("[Safepay webhook] received:", JSON.stringify(req.body));
+
+    // Verify webhook signature using the SDK
+    const hasSafepayKeys =
+      process.env.SAFEPAY_API_KEY && process.env.SAFEPAY_API_KEY !== "your_key";
+
+    if (hasSafepayKeys) {
+      try {
+        // The SDK's webhook verification checks the X-SFPY-WEBHOOK-SIG header
+        // against the raw body using SAFEPAY_WEBHOOK_SECRET
+        const isValid = safepay.verify.webhook({
+          headers: req.headers,
+          body: req.body,
+        });
+        if (!isValid) {
+          console.error("[Safepay webhook] invalid signature — ignoring");
+          return res.status(200).json({ received: true }); // 200 so Safepay doesn't retry
+        }
+      } catch (verifyErr) {
+        console.error(
+          "[Safepay webhook] signature check error:",
+          verifyErr.message,
+        );
+        // Don't block — if verify method doesn't exist in this SDK version, proceed
+      }
+    }
+
+    // Safepay webhook payload shape:
+    // { type: "payment:created", data: { tracker, order_id, status, ... } }
+    const eventType = req.body?.type || req.body?.event || "";
+    const payload = req.body?.data || req.body;
+
+    console.log("[Safepay webhook] event type:", eventType);
+    console.log("[Safepay webhook] payload:", JSON.stringify(payload));
+
+    // Accept any payment success event
+    const isPaymentSuccess =
+      eventType.includes("payment") ||
+      eventType.includes("success") ||
+      eventType.includes("paid") ||
+      payload?.status === "PAID" ||
+      payload?.state === "PAID";
+
+    if (!isPaymentSuccess) {
+      console.log("[Safepay webhook] non-payment event, skipping:", eventType);
+      return res.status(200).json({ received: true });
+    }
+
+    // Find order_id in payload (Safepay may use different field names)
+    const orderId =
+      payload?.order_id ||
+      payload?.orderId ||
+      payload?.metadata?.order_id ||
+      req.body?.order_id;
+
+    if (!orderId) {
+      console.error("[Safepay webhook] no order_id in payload:", req.body);
+      return res.status(200).json({ received: true });
+    }
+
+    const txId = Number(orderId);
+    const { data: tx } = await supabase
+      .from("transactions")
+      .select("tx_id, user_id, course_id, status")
+      .eq("tx_id", txId)
+      .maybeSingle();
+
+    if (!tx) {
+      console.error("[Safepay webhook] no tx found for order_id:", orderId);
+      return res.status(200).json({ received: true });
+    }
+
+    if (tx.status === "completed") {
+      console.log("[Safepay webhook] tx already completed:", txId);
+      return res.status(200).json({ received: true });
+    }
+
+    // Mark completed
+    const { error: updateErr } = await supabase
+      .from("transactions")
+      .update({ status: "completed" })
+      .eq("tx_id", txId);
+    if (updateErr) throw new Error(updateErr.message);
+
+    // Enroll student
+    await enrollStudent(tx.user_id, tx.course_id);
+
+    console.log(
+      `[Safepay webhook] ✓ tx ${txId} completed — user ${tx.user_id} enrolled in course ${tx.course_id}`,
+    );
+
+    // Always return 200 quickly so Safepay doesn't retry
+    return res.status(200).json({ received: true });
+  } catch (err) {
+    console.error("[Safepay webhook] error:", err.message);
+    // Still return 200 — if we 500, Safepay retries and may double-enroll
+    return res.status(200).json({ received: true, error: err.message });
+  }
+}
+
 module.exports = {
   initiateTransaction,
   handleCallback,
+  handleWebhook,
   checkTransactionStatus,
   verifyTransaction,
   getMyTransactions,

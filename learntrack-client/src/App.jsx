@@ -29,6 +29,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import AdminUsers from "./pages/admin/Users";
 import AdminCourses from "./pages/admin/Courses";
 import AdminAnalytics from "./pages/admin/Analytics";
+import AdminReviews from "./pages/admin/Reviews";
 
 import CertificateVerify from "./pages/CertificateVerify";
 import PaymentSuccess from "./pages/PaymentSuccess";
@@ -96,6 +97,7 @@ export default function App() {
               <Route path="users" element={<AdminUsers />} />
               <Route path="courses" element={<AdminCourses />} />
               <Route path="analytics" element={<AdminAnalytics />} />
+              <Route path="reviews" element={<AdminReviews />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />
